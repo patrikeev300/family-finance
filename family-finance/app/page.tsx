@@ -11,6 +11,7 @@ import {
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
+  DrawerTrigger,
   DrawerFooter,
   DrawerClose,
 } from "@/components/ui/drawer";
@@ -101,9 +102,7 @@ export default function Home() {
   const supabase = createClient();
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      initApp();
-    }
+    if (typeof window !== "undefined") initApp();
   }, []);
 
   async function initApp() {
@@ -271,7 +270,6 @@ export default function Home() {
     });
   }, []);
 
-  // Добавление/редактирование транзакции
   const handleTxSubmit = useCallback(async () => {
     if (!amount || !currentLedger || !supabase) return;
     const num = parseFloat(amount);
@@ -308,7 +306,6 @@ export default function Home() {
     refreshData(ledgers.map((l: any) => l.id));
   }, [amount, currentLedger, supabase, type, selectedCategoryId, comment, editingTx, profile, ledgers]);
 
-  // Добавление/редактирование категории
   const handleCategorySubmit = useCallback(async () => {
     if (!catName || !currentLedger || !supabase) return;
 
@@ -340,7 +337,6 @@ export default function Home() {
     refreshData(ledgers.map((l: any) => l.id));
   }, [catName, catIcon, catType, editingCat, currentLedger, supabase, ledgers]);
 
-  // Добавление/редактирование кредита/карты
   const handleCreditSubmit = useCallback(async () => {
     if (!creditName || !currentLedger || !supabase) return;
 
@@ -378,7 +374,6 @@ export default function Home() {
     refreshData(ledgers.map((l: any) => l.id));
   }, [creditName, creditDebt, creditLimit, creditTransferLimit, creditDueDate, creditType, editingCredit, currentLedger, supabase, ledgers]);
 
-  // Удаление
   const handleDelete = useCallback(async (id: string, table: "transactions" | "credit_items" | "categories") => {
     if (!confirm("Удалить?")) return;
     const { error } = await supabase.from(table).delete().eq("id", id);
@@ -391,7 +386,6 @@ export default function Home() {
     setDeleteTable(null);
   }, [supabase, ledgers]);
 
-  // Открытие редактирования категории
   const openEditCategory = useCallback((cat: Category) => {
     setEditingCat(cat);
     setCatName(cat.name);
@@ -432,7 +426,7 @@ export default function Home() {
   const isCredit = activeTab === "Кредиты";
 
   return (
-    <main className="min-h-screen bg-black text-white pb-32 px-4">
+    <main className="min-h-screen bg-black text-white pb-44 px-4">
       {/* Header */}
       <div className="flex justify-between items-center py-6">
         <h1 className="text-3xl font-bold">PNL Finance</h1>
@@ -465,7 +459,7 @@ export default function Home() {
 
       {/* Контент */}
       {!isCredit ? (
-        <div className="space-y-10">
+        <div className="space-y-10 pb-32">
           {/* Доходы */}
           <section>
             <h2 className="text-2xl font-bold flex items-center gap-3 text-emerald-300 mb-4">
@@ -524,8 +518,8 @@ export default function Home() {
             )}
           </section>
 
-          {/* Кнопки внизу */}
-          <div className="fixed bottom-28 left-0 right-0 px-4 z-40 flex justify-center gap-4">
+          {/* Кнопки — теперь просто внизу страницы, не фиксированы */}
+          <div className="flex justify-center gap-4 pb-8">
             <Button
               variant="outline"
               className="bg-zinc-900 border-zinc-700 hover:bg-zinc-800 flex-1 max-w-xs"
@@ -543,7 +537,7 @@ export default function Home() {
           </div>
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-8 pb-32">
           <h2 className="text-3xl font-bold text-center text-purple-300">Кредитные обязательства</h2>
 
           {/* Кредиты */}
@@ -847,7 +841,7 @@ export default function Home() {
         <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white max-h-[90vh]">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
             <DrawerTitle className="text-3xl font-bold text-center">
-              Категории {activeTab}
+              Все категории
             </DrawerTitle>
           </DrawerHeader>
 
