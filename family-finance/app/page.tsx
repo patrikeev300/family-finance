@@ -12,11 +12,15 @@ import {
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
+  DrawerFooter,
+  DrawerClose,
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
-import { Calendar, Plus, ArrowUpCircle, ArrowDownCircle } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Calendar, Plus, ArrowUpCircle, ArrowDownCircle, Trash2, Pencil, X } from "lucide-react";
 
-// Минимальный тип для категорий (чтобы TS не ругался на icon)
+const LEDGER_TITLES = ["Настя", "Глеб", "Еда", "ВБ", "Кредиты"];
+
 type Category = {
   id: string;
   name: string;
@@ -25,9 +29,6 @@ type Category = {
   ledger_id: string;
 };
 
-const LEDGER_TITLES = ["Настя", "Глеб", "Еда", "ВБ", "Кредиты"];
-
-// Объявляем Telegram глобально (чтобы не ругался TS)
 declare global {
   interface Window {
     Telegram?: {
@@ -46,16 +47,19 @@ export default function Home() {
   const [categories, setCategories] = useState<Category[]>([]);
 
   const [activeTab, setActiveTab] = useState("Настя");
-  const [selectedMonth, setSelectedMonth] = useState(
-    new Date().toISOString().slice(0, 7)
-  );
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
 
-  // Drawer
+  // Drawer для добавления транзакции
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"income" | "expense">("expense");
   const [comment, setComment] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+
+  // Модалка для списка транзакций по категории
+  const [selectedCat, setSelectedCat] = useState<{ name: string; id: string | null; type: string } | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [txToDelete, setTxToDelete] = useState<string | null>(null);
 
   const supabase = createClient();
 
@@ -68,19 +72,14 @@ export default function Home() {
   async function initApp() {
     try {
       setLoading(true);
-
       const tg = window.Telegram?.WebApp;
       if (tg) {
         tg.ready();
         tg.expand();
       }
 
-      const tgUser = tg?.initDataUnsafe?.user || {
-        id: 464444608,
-        first_name: "Глеб (демо)",
-      };
+      const tgUser = tg?.initDataUnsafe?.user || { id: 464444608, first_name: "Глеб (демо)" };
 
-      // Профиль + семья
       let { data: currProfile } = await supabase
         .from("profiles")
         .select("*")
@@ -105,36 +104,26 @@ export default function Home() {
             })
             .select()
             .single();
-
           currProfile = newProfile;
         }
       }
 
       setProfile(currProfile);
 
-      if (!currProfile?.family_id) {
-        console.error("Нет family_id");
-        return;
-      }
+      if (!currProfile?.family_id) return;
 
-      // Ledgers
       let { data: currLedgers } = await supabase
         .from("ledgers")
         .select("*")
         .eq("family_id", currProfile.family_id);
 
       if (!currLedgers?.length) {
-        const inserts = LEDGER_TITLES.map((title) => ({
+        const inserts = LEDGER_TITLES.map(title => ({
           family_id: currProfile.family_id,
           title,
           type: title === "Кредиты" ? "credit" : "standard",
         }));
-
-        const { data: created } = await supabase
-          .from("ledgers")
-          .insert(inserts)
-          .select();
-
+        const { data: created } = await supabase.from("ledgers").insert(inserts).select();
         currLedgers = created || [];
       }
 
@@ -177,9 +166,7 @@ export default function Home() {
     if (!currentLedger) return null;
 
     const filtered = transactions.filter(
-      (t: any) =>
-        t.ledger_id === currentLedger.id &&
-        t.transaction_date?.startsWith(selectedMonth)
+      (t: any) => t.ledger_id === currentLedger.id && t.transaction_date?.startsWith(selectedMonth)
     );
 
     const incomeTx = filtered.filter((t: any) => t.transaction_type === "income");
@@ -222,7 +209,6 @@ export default function Home() {
 
   async function handleAdd() {
     if (!amount || !currentLedger || !supabase) return;
-
     const num = parseFloat(amount);
     if (isNaN(num)) return;
 
@@ -237,7 +223,7 @@ export default function Home() {
     });
 
     if (error) {
-      console.error("Ошибка добавления:", error);
+      console.error("Ошибка:", error);
       return;
     }
 
@@ -245,58 +231,76 @@ export default function Home() {
     setComment("");
     setSelectedCategoryId(null);
     setDrawerOpen(false);
-
     window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success");
     refreshData(ledgers.map((l: any) => l.id));
   }
 
+  async function handleDeleteTransaction(id: string) {
+    if (!confirm("Удалить транзакцию?")) return;
+
+    const { error } = await supabase.from("transactions").delete().eq("id", id);
+    if (!error) {
+      refreshData(ledgers.map((l: any) => l.id));
+      window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success");
+    }
+  }
+
+  const transactionsByCategory = selectedCat
+    ? transactions.filter(
+        (t: any) =>
+          t.ledger_id === currentLedger?.id &&
+          t.category_id === selectedCat.id &&
+          t.transaction_date?.startsWith(selectedMonth)
+      )
+    : [];
+
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-black">
-        <div className="w-12 h-12 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-black to-zinc-950">
+        <div className="w-16 h-16 border-4 border-t-indigo-500 border-zinc-800 rounded-full animate-spin" />
       </div>
     );
   }
 
-  if (!currentLedger) {
-    return <div className="p-8 text-center text-xl">Раздел не найден</div>;
-  }
+  if (!currentLedger) return <div className="p-10 text-center text-2xl">Раздел не найден</div>;
 
   const isCredit = activeTab === "Кредиты";
 
   return (
-    <main className="min-h-screen bg-black text-white pb-36 p-4">
+    <main className="min-h-screen bg-gradient-to-b from-black to-zinc-950 text-white pb-44 px-5">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-black">Family Finance</h1>
-        <div className="flex items-center gap-2 bg-zinc-900 px-3 py-2 rounded-xl">
-          <Calendar size={16} />
+      <div className="flex justify-between items-center py-6">
+        <h1 className="text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-500 to-pink-500">
+          Family Finance
+        </h1>
+        <div className="flex items-center gap-3 bg-zinc-900/70 backdrop-blur-xl px-4 py-2 rounded-2xl border border-zinc-700/50">
+          <Calendar size={18} className="text-indigo-400" />
           <input
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="bg-transparent outline-none text-sm w-24"
+            className="bg-transparent outline-none text-sm font-medium w-28"
           />
         </div>
       </div>
 
       {/* Баланс */}
       {!isCredit && pageData && (
-        <Card className="mb-8 bg-zinc-950 border-zinc-800 rounded-3xl p-6 shadow-lg">
-          <p className="text-sm opacity-60 mb-2">{activeTab} • Баланс</p>
-          <div className="text-5xl font-black mb-6">
+        <Card className="mb-10 bg-gradient-to-br from-zinc-900/80 to-black border border-zinc-700/50 rounded-3xl p-8 shadow-2xl backdrop-blur-xl">
+          <p className="text-sm opacity-60 mb-3 uppercase tracking-wider">{activeTab} • Баланс</p>
+          <div className="text-6xl font-black mb-8 bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-400">
             {pageData.balance.toLocaleString("ru-RU")} ₽
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-emerald-950/40 p-4 rounded-2xl border border-emerald-900/30">
-              <ArrowUpCircle className="text-emerald-400 mb-1" size={20} />
-              <p className="text-emerald-400 font-bold text-xl">
+          <div className="grid grid-cols-2 gap-6">
+            <div className="bg-gradient-to-br from-emerald-950/60 to-black p-6 rounded-2xl border border-emerald-800/30 hover:border-emerald-600/50 transition-all">
+              <ArrowUpCircle className="text-emerald-400 mb-3" size={28} />
+              <p className="text-emerald-400 font-bold text-2xl">
                 +{pageData.income.toLocaleString("ru-RU")}
               </p>
             </div>
-            <div className="bg-red-950/40 p-4 rounded-2xl border border-red-900/30">
-              <ArrowDownCircle className="text-red-400 mb-1" size={20} />
-              <p className="text-red-400 font-bold text-xl">
+            <div className="bg-gradient-to-br from-red-950/60 to-black p-6 rounded-2xl border border-red-800/30 hover:border-red-600/50 transition-all">
+              <ArrowDownCircle className="text-red-400 mb-3" size={28} />
+              <p className="text-red-400 font-bold text-2xl">
                 -{pageData.expense.toLocaleString("ru-RU")}
               </p>
             </div>
@@ -306,87 +310,167 @@ export default function Home() {
 
       {/* Контент */}
       {!isCredit ? (
-        <div className="space-y-10">
-          <div>
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-3">
-              <ArrowUpCircle className="text-emerald-500" size={24} /> Доходы
-            </h2>
+        <div className="space-y-12">
+          {/* Доходы */}
+          <section>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-3xl font-bold flex items-center gap-4 bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-400">
+                <ArrowUpCircle size={32} /> Доходы
+              </h2>
+              <Button variant="outline" size="sm" className="border-emerald-600 text-emerald-400 hover:bg-emerald-950/50">
+                + Категория
+              </Button>
+            </div>
             {pageData?.incomeGroups.length ? (
               pageData.incomeGroups.map((g: any, i: number) => (
                 <div
                   key={i}
-                  className="bg-zinc-900 p-5 rounded-2xl mb-3 flex justify-between items-center border border-zinc-800 hover:border-zinc-600 transition-colors"
+                  onClick={() => setSelectedCat({ name: g.name, id: categories.find(c => c.name === g.name)?.id || null, type: "income" })}
+                  className="bg-gradient-to-r from-zinc-900 to-black p-6 rounded-3xl mb-4 flex justify-between items-center border border-zinc-700/50 hover:border-emerald-600/70 hover:shadow-emerald-900/30 transition-all cursor-pointer group"
                 >
-                  <div className="flex items-center gap-4">
-                    {g.icon && <span className="text-3xl">{g.icon}</span>}
-                    <div className="font-medium text-lg">{g.name}</div>
+                  <div className="flex items-center gap-5">
+                    {g.icon && <span className="text-4xl transition-transform group-hover:scale-110">{g.icon}</span>}
+                    <div className="font-semibold text-xl">{g.name}</div>
                   </div>
-                  <div className="text-emerald-400 font-bold text-xl">
+                  <div className="text-emerald-400 font-black text-2xl group-hover:scale-105 transition-transform">
                     +{g.total.toLocaleString("ru-RU")} ₽
                   </div>
                 </div>
               ))
             ) : (
-              <p className="text-center opacity-50 py-12 text-lg">Нет доходов за месяц</p>
+              <div className="text-center py-16 opacity-60 text-xl border-2 border-dashed border-zinc-700 rounded-3xl">
+                Нет доходов за месяц
+              </div>
             )}
-          </div>
+          </section>
 
-          <div>
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-3">
-              <ArrowDownCircle className="text-red-500" size={24} /> Расходы
-            </h2>
+          {/* Расходы */}
+          <section>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-3xl font-bold flex items-center gap-4 bg-clip-text text-transparent bg-gradient-to-r from-red-400 to-rose-500">
+                <ArrowDownCircle size={32} /> Расходы
+              </h2>
+              <Button variant="outline" size="sm" className="border-red-600 text-red-400 hover:bg-red-950/50">
+                + Категория
+              </Button>
+            </div>
             {pageData?.expenseGroups.length ? (
               pageData.expenseGroups.map((g: any, i: number) => (
                 <div
                   key={i}
-                  className="bg-zinc-900 p-5 rounded-2xl mb-3 flex justify-between items-center border border-zinc-800 hover:border-zinc-600 transition-colors"
+                  onClick={() => setSelectedCat({ name: g.name, id: categories.find(c => c.name === g.name)?.id || null, type: "expense" })}
+                  className="bg-gradient-to-r from-zinc-900 to-black p-6 rounded-3xl mb-4 flex justify-between items-center border border-zinc-700/50 hover:border-red-600/70 hover:shadow-red-900/30 transition-all cursor-pointer group"
                 >
-                  <div className="flex items-center gap-4">
-                    {g.icon && <span className="text-3xl">{g.icon}</span>}
-                    <div className="font-medium text-lg">{g.name}</div>
+                  <div className="flex items-center gap-5">
+                    {g.icon && <span className="text-4xl transition-transform group-hover:scale-110">{g.icon}</span>}
+                    <div className="font-semibold text-xl">{g.name}</div>
                   </div>
-                  <div className="text-red-400 font-bold text-xl">
+                  <div className="text-red-400 font-black text-2xl group-hover:scale-105 transition-transform">
                     -{g.total.toLocaleString("ru-RU")} ₽
                   </div>
                 </div>
               ))
             ) : (
-              <p className="text-center opacity-50 py-12 text-lg">Нет расходов за месяц</p>
+              <div className="text-center py-16 opacity-60 text-xl border-2 border-dashed border-zinc-700 rounded-3xl">
+                Нет расходов за месяц
+              </div>
             )}
-          </div>
+          </section>
         </div>
       ) : (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold">Кредиты и карты</h2>
-          {pageData?.credits.length ? (
-            pageData.credits.map((c: any) => (
-              <Card key={c.id} className="p-6 bg-zinc-900 rounded-3xl border border-zinc-800">
-                <h3 className="font-bold text-xl mb-3">{c.name}</h3>
-                <p className="text-4xl font-black">
-                  {Number(c.total_debt).toLocaleString("ru-RU")} ₽
-                </p>
-                {c.due_date && (
-                  <p className="text-sm opacity-70 mt-3">
-                    Следующий платёж: {c.due_date}
-                  </p>
-                )}
-              </Card>
-            ))
-          ) : (
-            <p className="text-center opacity-50 py-16 text-lg">Нет активных кредитов</p>
-          )}
+        <div className="space-y-10">
+          <h2 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-500 text-center mb-8">
+            Кредитные обязательства
+          </h2>
+
+          {/* Блок Кредиты */}
+          <section>
+            <h3 className="text-2xl font-bold mb-6 flex items-center gap-3">
+              <span className="text-purple-400">Кредиты</span>
+            </h3>
+            {pageData?.credits.filter((c: any) => c.item_type === "loan").length ? (
+              pageData.credits
+                .filter((c: any) => c.item_type === "loan")
+                .map((c: any) => (
+                  <Card key={c.id} className="mb-6 bg-gradient-to-br from-purple-950/40 to-black border border-purple-800/40 rounded-3xl p-7 shadow-xl backdrop-blur-sm hover:scale-[1.02] transition-transform">
+                    <h4 className="font-bold text-2xl mb-4">{c.name}</h4>
+                    <p className="text-5xl font-black text-purple-300 mb-3">
+                      {Number(c.total_debt).toLocaleString("ru-RU")} ₽
+                    </p>
+                    {c.due_date && (
+                      <p className="text-lg opacity-80 flex items-center gap-2">
+                        <Calendar size={20} /> Платёж: {c.due_date}
+                      </p>
+                    )}
+                  </Card>
+                ))
+            ) : (
+              <div className="text-center py-12 opacity-60 text-xl border border-dashed border-purple-800/40 rounded-3xl">
+                Нет кредитов
+              </div>
+            )}
+          </section>
+
+          {/* Блок Кредитные карты */}
+          <section>
+            <h3 className="text-2xl font-bold mb-6 flex items-center gap-3">
+              <span className="text-pink-400">Кредитные карты</span>
+            </h3>
+            {pageData?.credits.filter((c: any) => c.item_type === "credit_card").length ? (
+              pageData.credits
+                .filter((c: any) => c.item_type === "credit_card")
+                .map((c: any) => (
+                  <Card key={c.id} className="mb-6 bg-gradient-to-br from-pink-950/40 to-black border border-pink-800/40 rounded-3xl p-7 shadow-xl backdrop-blur-sm hover:scale-[1.02] transition-transform">
+                    <h4 className="font-bold text-2xl mb-4">{c.name}</h4>
+                    <div className="grid grid-cols-2 gap-6 mb-4">
+                      <div>
+                        <p className="text-sm opacity-70">Задолженность</p>
+                        <p className="text-3xl font-black text-pink-300">
+                          {Number(c.total_debt).toLocaleString("ru-RU")} ₽
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm opacity-70">Остаток лимита</p>
+                        <p className="text-3xl font-black text-teal-300">
+                          {Number(c.current_balance || c.credit_limit - c.total_debt || 0).toLocaleString("ru-RU")} ₽
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-6">
+                      <div>
+                        <p className="text-sm opacity-70">Лимит</p>
+                        <p className="text-xl font-semibold">{Number(c.credit_limit || 0).toLocaleString("ru-RU")} ₽</p>
+                      </div>
+                      <div>
+                        <p className="text-sm opacity-70">Лимит переводов</p>
+                        <p className="text-xl font-semibold">{Number(c.transfer_limit || 0).toLocaleString("ru-RU")} ₽</p>
+                      </div>
+                    </div>
+                    {c.due_date && (
+                      <p className="mt-6 text-lg opacity-80 flex items-center gap-2">
+                        <Calendar size={20} /> Платёж: {c.due_date}
+                      </p>
+                    )}
+                  </Card>
+                ))
+            ) : (
+              <div className="text-center py-12 opacity-60 text-xl border border-dashed border-pink-800/40 rounded-3xl">
+                Нет кредитных карт
+              </div>
+            )}
+          </section>
         </div>
       )}
 
-      {/* Навигация — теперь внутри Tabs */}
+      {/* Навигация */}
       <div className="fixed bottom-8 left-4 right-4 z-50">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-5 bg-zinc-950/90 backdrop-blur-xl border border-zinc-800 rounded-3xl p-2 shadow-2xl">
+          <TabsList className="grid grid-cols-5 bg-zinc-950/80 backdrop-blur-2xl border border-zinc-700/60 rounded-3xl p-2 shadow-2xl">
             {LEDGER_TITLES.map((name) => (
               <TabsTrigger
                 key={name}
                 value={name}
-                className="rounded-2xl data-[state=active]:bg-white data-[state=active]:text-black text-xs font-bold uppercase tracking-tight"
+                className="rounded-2xl data-[state=active]:bg-gradient-to-r data-[state=active]:from-indigo-600 data-[state=active]:to-purple-600 data-[state=active]:text-white text-sm font-bold uppercase tracking-wider transition-all"
               >
                 {name}
               </TabsTrigger>
@@ -395,25 +479,29 @@ export default function Home() {
         </Tabs>
       </div>
 
-      {/* Drawer */}
+      {/* Drawer добавления транзакции */}
       {!isCredit && (
         <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
           <DrawerTrigger asChild>
-            <Button className="fixed bottom-28 right-6 w-16 h-16 rounded-full bg-white text-black shadow-2xl hover:scale-105 transition-transform z-50 flex items-center justify-center">
+            <Button className="fixed bottom-28 right-6 w-16 h-16 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-2xl hover:scale-110 hover:shadow-indigo-500/50 transition-all duration-300 z-50 flex items-center justify-center">
               <Plus size={32} strokeWidth={3} />
             </Button>
           </DrawerTrigger>
-          <DrawerContent className="bg-zinc-950 border-t border-zinc-800 text-white max-h-[85vh]">
-            <DrawerHeader className="border-b border-zinc-800 pb-6">
-              <DrawerTitle className="text-3xl font-black text-center">
-                Новая запись — {activeTab}
+          <DrawerContent className="bg-gradient-to-b from-zinc-950 to-black border-t border-zinc-700/50 text-white max-h-[90vh] backdrop-blur-xl">
+            <DrawerHeader className="border-b border-zinc-700/50 pb-6">
+              <DrawerTitle className="text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-500 text-center">
+                Новая запись
               </DrawerTitle>
+              <p className="text-center text-zinc-400 mt-2">{activeTab} • {type === "income" ? "Пополнение" : "Списание"}</p>
             </DrawerHeader>
+
             <div className="p-6 space-y-8">
-              <div className="flex gap-4 bg-zinc-900 p-2 rounded-2xl">
+              <div className="flex gap-4 bg-zinc-900/50 p-2 rounded-2xl border border-zinc-700/50 backdrop-blur-sm">
                 <Button
-                  className={`flex-1 h-14 text-lg font-bold rounded-xl ${
-                    type === "expense" ? "bg-white text-black" : "bg-zinc-800 text-white"
+                  className={`flex-1 h-14 text-lg font-bold rounded-xl transition-all ${
+                    type === "expense"
+                      ? "bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-red-900/30"
+                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
                   }`}
                   onClick={() => {
                     setType("expense");
@@ -423,8 +511,10 @@ export default function Home() {
                   Расход
                 </Button>
                 <Button
-                  className={`flex-1 h-14 text-lg font-bold rounded-xl ${
-                    type === "income" ? "bg-white text-black" : "bg-zinc-800 text-white"
+                  className={`flex-1 h-14 text-lg font-bold rounded-xl transition-all ${
+                    type === "income"
+                      ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-emerald-900/30"
+                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
                   }`}
                   onClick={() => {
                     setType("income");
@@ -441,18 +531,18 @@ export default function Home() {
                   placeholder="0"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="text-8xl font-black text-center h-40 bg-transparent border-none focus:ring-0 placeholder:text-zinc-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="text-9xl font-black text-center h-48 bg-transparent border-none focus:ring-0 placeholder:text-zinc-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   autoFocus
                 />
-                <p className="text-sm opacity-50 mt-2 uppercase tracking-widest">₽</p>
+                <p className="text-xl opacity-60 mt-3 tracking-widest">₽</p>
               </div>
 
               <div>
-                <label className="block text-sm opacity-70 mb-2">Категория</label>
+                <label className="block text-lg font-medium mb-3 text-zinc-300">Категория</label>
                 <select
                   value={selectedCategoryId || ""}
                   onChange={(e) => setSelectedCategoryId(e.target.value || null)}
-                  className="w-full h-14 bg-zinc-900 border border-zinc-700 rounded-xl px-5 text-lg focus:outline-none focus:border-zinc-500 transition-colors"
+                  className="w-full h-16 bg-zinc-900/70 border border-zinc-700 rounded-2xl px-6 text-xl focus:outline-none focus:border-indigo-500 transition-all backdrop-blur-sm"
                 >
                   <option value="">Без категории</option>
                   {categories
@@ -466,19 +556,19 @@ export default function Home() {
               </div>
 
               <div>
-                <label className="block text-sm opacity-70 mb-2">Комментарий</label>
+                <label className="block text-lg font-medium mb-3 text-zinc-300">Комментарий</label>
                 <Input
-                  placeholder="Например: Зарплата февраль"
+                  placeholder="Для чего именно..."
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
-                  className="h-14 bg-zinc-900 border-zinc-700 text-lg"
+                  className="h-16 bg-zinc-900/70 border-zinc-700 text-xl rounded-2xl px-6 backdrop-blur-sm"
                 />
               </div>
 
               <Button
                 onClick={handleAdd}
                 disabled={!amount}
-                className="w-full h-16 text-xl font-black bg-white text-black rounded-2xl hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full h-20 text-2xl font-black bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-2xl shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 Добавить
               </Button>
@@ -486,6 +576,88 @@ export default function Home() {
           </DrawerContent>
         </Drawer>
       )}
+
+      {/* Модалка списка транзакций по категории */}
+      <Dialog open={!!selectedCat} onOpenChange={() => setSelectedCat(null)}>
+        <DialogContent className="bg-gradient-to-b from-zinc-950 to-black border-zinc-700/50 text-white max-w-2xl max-h-[90vh] overflow-y-auto backdrop-blur-xl">
+          <DialogHeader className="border-b border-zinc-700/50 pb-6">
+            <DialogTitle className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-500">
+              {selectedCat?.name || "Транзакции"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-6 space-y-4">
+            {transactionsByCategory.length ? (
+              transactionsByCategory.map((t: any) => (
+                <div
+                  key={t.id}
+                  className="bg-zinc-900/70 p-5 rounded-2xl flex justify-between items-center border border-zinc-800 hover:border-zinc-600 transition-all backdrop-blur-sm"
+                >
+                  <div>
+                    <p className="font-medium text-lg">{t.comment || "Без комментария"}</p>
+                    <p className="text-sm opacity-60 mt-1">
+                      {new Date(t.transaction_date).toLocaleDateString("ru-RU")}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-6">
+                    <p className={`font-bold text-xl ${t.transaction_type === "income" ? "text-emerald-400" : "text-red-400"}`}>
+                      {t.transaction_type === "income" ? "+" : "-"}{Number(t.amount).toLocaleString("ru-RU")} ₽
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-red-400 hover:text-red-300 hover:bg-red-950/50"
+                      onClick={() => {
+                        setTxToDelete(t.id);
+                        setDeleteDialogOpen(true);
+                      }}
+                    >
+                      <Trash2 size={20} />
+                    </Button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-center py-16 opacity-60 text-xl">Нет транзакций в этой категории</p>
+            )}
+          </div>
+
+          <DialogFooter className="border-t border-zinc-700/50 pt-6">
+            <Button
+              variant="outline"
+              onClick={() => setSelectedCat(null)}
+              className="border-zinc-600 text-zinc-300 hover:bg-zinc-800"
+            >
+              Закрыть
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог подтверждения удаления */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="bg-zinc-950 border-zinc-700 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-2xl text-red-400">Удалить транзакцию?</DialogTitle>
+          </DialogHeader>
+          <p className="text-zinc-300 mt-4">Это действие нельзя отменить.</p>
+          <DialogFooter className="mt-8">
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              Отмена
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (txToDelete) handleDeleteTransaction(txToDelete);
+                setDeleteDialogOpen(false);
+                setTxToDelete(null);
+              }}
+            >
+              Удалить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
