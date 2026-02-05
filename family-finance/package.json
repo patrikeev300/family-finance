@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.94.1",
     "@telegram-apps/sdk-react": "^3.3.9",
     "class-variance-authority": "^0.7.1",
