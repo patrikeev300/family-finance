@@ -71,6 +71,7 @@ export default function Home() {
   const [comment, setComment] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [editingTx, setEditingTx] = useState<any | null>(null);
+  const [catTxOpen, setCatTxOpen] = useState(false);
 
   // Категории
   const [catManagerOpen, setCatManagerOpen] = useState(false);
@@ -91,7 +92,6 @@ export default function Home() {
   const [editingCredit, setEditingCredit] = useState<any | null>(null);
 
   // Модалки
-  const [catTxOpen, setCatTxOpen] = useState(false);
   const [selectedCat, setSelectedCat] = useState<{ name: string; id: string | null; type: string } | null>(null);
   const [allTxOpen, setAllTxOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -101,19 +101,25 @@ export default function Home() {
   const supabase = createClient();
 
   useEffect(() => {
-    if (typeof window !== "undefined") initApp();
+    if (typeof window !== "undefined") {
+      initApp();
+    }
   }, []);
 
   async function initApp() {
     try {
       setLoading(true);
+
       const tg = window.Telegram?.WebApp;
       if (tg) {
         tg.ready();
         tg.expand();
       }
 
-      const tgUser = tg?.initDataUnsafe?.user || { id: 464444608, first_name: "Глеб (демо)" };
+      const tgUser = tg?.initDataUnsafe?.user || {
+        id: 464444608,
+        first_name: "Глеб (демо)",
+      };
 
       let { data: currProfile } = await supabase
         .from("profiles")
@@ -139,12 +145,17 @@ export default function Home() {
             })
             .select()
             .single();
+
           currProfile = newProfile;
         }
       }
 
       setProfile(currProfile);
-      if (!currProfile?.family_id) return;
+
+      if (!currProfile?.family_id) {
+        console.error("Нет family_id");
+        return;
+      }
 
       let { data: currLedgers } = await supabase
         .from("ledgers")
@@ -152,12 +163,17 @@ export default function Home() {
         .eq("family_id", currProfile.family_id);
 
       if (!currLedgers?.length) {
-        const inserts = LEDGER_TITLES.map(title => ({
+        const inserts = LEDGER_TITLES.map((title) => ({
           family_id: currProfile.family_id,
           title,
           type: title === "Кредиты" ? "credit" : "standard",
         }));
-        const { data: created } = await supabase.from("ledgers").insert(inserts).select();
+
+        const { data: created } = await supabase
+          .from("ledgers")
+          .insert(inserts)
+          .select();
+
         currLedgers = created || [];
       }
 
@@ -200,7 +216,9 @@ export default function Home() {
     if (!currentLedger) return null;
 
     const filtered = transactions.filter(
-      (t: any) => t.ledger_id === currentLedger.id && t.transaction_date?.startsWith(selectedMonth)
+      (t: any) =>
+        t.ledger_id === currentLedger.id &&
+        t.transaction_date?.startsWith(selectedMonth)
     );
 
     const incomeTx = filtered.filter((t: any) => t.transaction_type === "income");
@@ -253,7 +271,7 @@ export default function Home() {
     });
   }, []);
 
-  // Транзакции: добавление/редактирование
+  // Добавление/редактирование транзакции
   const handleTxSubmit = useCallback(async () => {
     if (!amount || !currentLedger || !supabase) return;
     const num = parseFloat(amount);
@@ -290,7 +308,7 @@ export default function Home() {
     refreshData(ledgers.map((l: any) => l.id));
   }, [amount, currentLedger, supabase, type, selectedCategoryId, comment, editingTx, profile, ledgers]);
 
-  // Категории: добавление/редактирование
+  // Добавление/редактирование категории
   const handleCategorySubmit = useCallback(async () => {
     if (!catName || !currentLedger || !supabase) return;
 
@@ -322,7 +340,7 @@ export default function Home() {
     refreshData(ledgers.map((l: any) => l.id));
   }, [catName, catIcon, catType, editingCat, currentLedger, supabase, ledgers]);
 
-  // Кредиты/карты: добавление/редактирование
+  // Добавление/редактирование кредита/карты
   const handleCreditSubmit = useCallback(async () => {
     if (!creditName || !currentLedger || !supabase) return;
 
@@ -409,7 +427,7 @@ export default function Home() {
     );
   }
 
-  if (!currentLedger) return <div className="p-10 text-center text-2xl">Раздел не найден</div>;
+  if (!currentLedger) return <div className="p-10 text-center text-2xl text-white">Раздел не найден</div>;
 
   const isCredit = activeTab === "Кредиты";
 
@@ -450,75 +468,9 @@ export default function Home() {
         <div className="space-y-10">
           {/* Доходы */}
           <section>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold flex items-center gap-3 text-emerald-300">
-                <ArrowUpCircle size={24} /> Доходы
-              </h2>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCatManagerOpen(!catManagerOpen)}
-                >
-                  {catManagerOpen ? "Скрыть" : "Категории"}
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setAllTxOpen(true)}>
-                  Все
-                </Button>
-              </div>
-            </div>
-
-            {catManagerOpen && (
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 mb-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Категории доходов</h3>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditingCat(null);
-                      setCatName("");
-                      setCatIcon("");
-                      setCatType("income");
-                      setCatDrawerOpen(true);
-                    }}
-                  >
-                    + Добавить
-                  </Button>
-                </div>
-                <div className="space-y-3">
-                  {categories
-                    .filter((c) => c.ledger_id === currentLedger.id && c.type === "income")
-                    .map((c) => (
-                      <div
-                        key={c.id}
-                        className="flex justify-between items-center bg-zinc-950 p-3 rounded-lg border border-zinc-800"
-                      >
-                        <div className="flex items-center gap-3">
-                          {c.icon && <span className="text-2xl">{c.icon}</span>}
-                          <span>{c.name}</span>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => openEditCategory(c)}>
-                            <Pencil size={16} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              setDeleteId(c.id);
-                              setDeleteTable("categories");
-                              setDeleteDialogOpen(true);
-                            }}
-                          >
-                            <Trash2 size={16} />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
+            <h2 className="text-2xl font-bold flex items-center gap-3 text-emerald-300 mb-4">
+              <ArrowUpCircle size={24} /> Доходы
+            </h2>
 
             {pageData?.incomeGroups.length ? (
               pageData.incomeGroups.map((g, i) => (
@@ -545,75 +497,9 @@ export default function Home() {
 
           {/* Расходы */}
           <section>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold flex items-center gap-3 text-red-300">
-                <ArrowDownCircle size={24} /> Расходы
-              </h2>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCatManagerOpen(!catManagerOpen)}
-                >
-                  {catManagerOpen ? "Скрыть" : "Категории"}
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setAllTxOpen(true)}>
-                  Все
-                </Button>
-              </div>
-            </div>
-
-            {catManagerOpen && (
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 mb-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Категории расходов</h3>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditingCat(null);
-                      setCatName("");
-                      setCatIcon("");
-                      setCatType("expense");
-                      setCatDrawerOpen(true);
-                    }}
-                  >
-                    + Добавить
-                  </Button>
-                </div>
-                <div className="space-y-3">
-                  {categories
-                    .filter((c) => c.ledger_id === currentLedger.id && c.type === "expense")
-                    .map((c) => (
-                      <div
-                        key={c.id}
-                        className="flex justify-between items-center bg-zinc-950 p-3 rounded-lg border border-zinc-800"
-                      >
-                        <div className="flex items-center gap-3">
-                          {c.icon && <span className="text-2xl">{c.icon}</span>}
-                          <span>{c.name}</span>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => openEditCategory(c)}>
-                            <Pencil size={16} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              setDeleteId(c.id);
-                              setDeleteTable("categories");
-                              setDeleteDialogOpen(true);
-                            }}
-                          >
-                            <Trash2 size={16} />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
+            <h2 className="text-2xl font-bold flex items-center gap-3 text-red-300 mb-4">
+              <ArrowDownCircle size={24} /> Расходы
+            </h2>
 
             {pageData?.expenseGroups.length ? (
               pageData.expenseGroups.map((g, i) => (
@@ -637,6 +523,24 @@ export default function Home() {
               </div>
             )}
           </section>
+
+          {/* Кнопки внизу */}
+          <div className="fixed bottom-28 left-0 right-0 px-4 z-40 flex justify-center gap-4">
+            <Button
+              variant="outline"
+              className="bg-zinc-900 border-zinc-700 hover:bg-zinc-800 flex-1 max-w-xs"
+              onClick={() => setCatManagerOpen(true)}
+            >
+              Категории
+            </Button>
+            <Button
+              variant="outline"
+              className="bg-zinc-900 border-zinc-700 hover:bg-zinc-800 flex-1 max-w-xs"
+              onClick={() => setAllTxOpen(true)}
+            >
+              Все транзакции
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="space-y-8">
@@ -827,11 +731,23 @@ export default function Home() {
         </Tabs>
       </div>
 
-      {/* Dialog для транзакций (компактный и быстрый) */}
-      <Dialog open={txDialogOpen} onOpenChange={(open) => {
-        setTxDialogOpen(open);
-        if (!open) setEditingTx(null);
-      }}>
+      {/* Кнопка добавления транзакции */}
+      <Button
+        className="fixed bottom-28 right-6 w-16 h-16 rounded-full bg-indigo-600 text-white shadow-xl hover:bg-indigo-700 transition-colors z-50 flex items-center justify-center"
+        onClick={() => {
+          setEditingTx(null);
+          setAmount("");
+          setComment("");
+          setSelectedCategoryId(null);
+          setType("expense");
+          setTxDialogOpen(true);
+        }}
+      >
+        <Plus size={32} strokeWidth={3} />
+      </Button>
+
+      {/* Dialog для транзакций */}
+      <Dialog open={txDialogOpen} onOpenChange={setTxDialogOpen}>
         <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm p-6">
           <DialogHeader className="mb-5">
             <DialogTitle className="text-2xl font-bold text-center">
@@ -938,7 +854,7 @@ export default function Home() {
           <div className="p-6 space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {categories
-                .filter((c) => c.ledger_id === currentLedger.id && c.type === (activeTab === "Доходы" ? "income" : "expense"))
+                .filter((c) => c.ledger_id === currentLedger.id)
                 .map((c) => (
                   <div
                     key={c.id}
@@ -946,7 +862,12 @@ export default function Home() {
                   >
                     <div className="flex items-center gap-3">
                       {c.icon && <span className="text-2xl">{c.icon}</span>}
-                      <span>{c.name}</span>
+                      <div>
+                        <span className="font-medium">{c.name}</span>
+                        <span className="text-xs text-zinc-500 block">
+                          {c.type === "income" ? "Доход" : "Расход"}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <Button variant="ghost" size="icon" onClick={() => openEditCategory(c)}>
@@ -974,7 +895,7 @@ export default function Home() {
                 setEditingCat(null);
                 setCatName("");
                 setCatIcon("");
-                setCatType(activeTab === "Доходы" ? "income" : "expense");
+                setCatType("expense");
                 setCatDrawerOpen(true);
               }}
             >
