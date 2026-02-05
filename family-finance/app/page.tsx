@@ -16,7 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Calendar, Plus, ArrowUpCircle, ArrowDownCircle } from "lucide-react";
 
-// Минимальный тип только для categories (чтобы TS не ругался на icon)
+// Минимальный тип для категорий (чтобы TS не ругался на icon)
 type Category = {
   id: string;
   name: string;
@@ -27,7 +27,7 @@ type Category = {
 
 const LEDGER_TITLES = ["Настя", "Глеб", "Еда", "ВБ", "Кредиты"];
 
-// Объявляем Telegram глобально, чтобы TS не ругался
+// Объявляем Telegram глобально (чтобы не ругался TS)
 declare global {
   interface Window {
     Telegram?: {
@@ -50,7 +50,7 @@ export default function Home() {
     new Date().toISOString().slice(0, 7)
   );
 
-  // Drawer форма
+  // Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"income" | "expense">("expense");
@@ -259,7 +259,7 @@ export default function Home() {
   }
 
   if (!currentLedger) {
-    return <div className="p-8 text-center">Раздел не найден</div>;
+    return <div className="p-8 text-center text-xl">Раздел не найден</div>;
   }
 
   const isCredit = activeTab === "Кредиты";
@@ -378,20 +378,21 @@ export default function Home() {
         </div>
       )}
 
-      {/* Навигация */}
+      {/* Навигация — теперь внутри Tabs */}
       <div className="fixed bottom-8 left-4 right-4 z-50">
-        <TabsList className="grid grid-cols-5 bg-zinc-950/90 backdrop-blur-xl border border-zinc-800 rounded-3xl p-2 shadow-2xl">
-          {LEDGER_TITLES.map((name) => (
-            <TabsTrigger
-              key={name}
-              value={name}
-              onClick={() => setActiveTab(name)}
-              className="rounded-2xl data-[state=active]:bg-white data-[state=active]:text-black text-xs font-bold uppercase tracking-tight"
-            >
-              {name}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid grid-cols-5 bg-zinc-950/90 backdrop-blur-xl border border-zinc-800 rounded-3xl p-2 shadow-2xl">
+            {LEDGER_TITLES.map((name) => (
+              <TabsTrigger
+                key={name}
+                value={name}
+                className="rounded-2xl data-[state=active]:bg-white data-[state=active]:text-black text-xs font-bold uppercase tracking-tight"
+              >
+                {name}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
       {/* Drawer */}
