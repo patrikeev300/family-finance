@@ -1,14 +1,27 @@
 "use client";
 
+// ЭТА СТРОЧКА ГОВОРИТ NEXT.JS: "НЕ СОБИРАЙ ЭТУ СТРАНИЦУ ЗАРАНЕЕ"
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState, useMemo } from "react";
-// ИСПОЛЬЗУЕМ ОТНОСИТЕЛЬНЫЙ ПУТЬ
-import { supabase } from "../lib/supabase"; 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Card } from "../components/ui/card";
+import { createClient } from '@supabase/supabase-js';
+
+// Берем ключи
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+// Создаем клиента только если ключи есть, чтобы билд не ругался
+const supabase = (supabaseUrl && supabaseAnonKey) 
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : null as any;
+
+// Остальные импорты (через @)
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card } from "@/components/ui/card";
 import { Plus, Wallet, ShoppingCart, CreditCard, User, ArrowUpCircle, ArrowDownCircle, Trash2, Calendar } from "lucide-react";
-import { Button } from "../components/ui/button";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger, DrawerFooter, DrawerClose } from "../components/ui/drawer";
-import { Input } from "../components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
+import { Input } from "@/components/ui/input";
 
 const LEDGER_NAMES = ["Настя", "Глеб", "Еда", "ВБ", "Кредиты"];
 
@@ -97,57 +110,64 @@ export default function Home() {
     refreshData(ledgers.map(l => l.id));
   }
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-bold bg-black text-white">ЗАГРУЗКА...</div>;
+  if (loading) return <div className="h-screen flex items-center justify-center font-bold bg-[#0f0f0f] text-white">ЗАГРУЗКА...</div>;
 
   return (
     <main className="min-h-screen bg-[#0f0f0f] text-white p-4 pb-32">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-xl font-black italic tracking-tighter text-white">PNL FINANCE</h1>
-        <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-card border rounded-full px-3 py-1 text-xs font-bold" />
+        <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-card border rounded-full px-3 py-1 text-[10px] font-bold outline-none" />
       </div>
 
       {activeTab !== "Кредиты" ? (
         <>
-          <Card className="p-6 border-none bg-gradient-to-br from-[#1a1a1a] to-[#0a0a0a] rounded-[2rem] mb-6">
-            <p className="text-[10px] font-black opacity-40 uppercase mb-1">{activeTab}</p>
-            <h2 className="text-4xl font-black">{(pageData?.balance || 0).toLocaleString()} ₽</h2>
-            <div className="grid grid-cols-2 gap-4 mt-6">
+          <Card className="p-6 border-none bg-gradient-to-br from-[#1a1a1a] to-[#0a0a0a] rounded-[2rem] shadow-2xl mb-6">
+            <p className="text-[10px] font-black opacity-40 uppercase mb-1 tracking-widest">{activeTab} / Баланс</p>
+            <h2 className="text-4xl font-black tracking-tighter">{(pageData?.balance || 0).toLocaleString()} ₽</h2>
+            <div className="grid grid-cols-2 gap-3 mt-6">
               <div className="bg-green-500/10 p-3 rounded-2xl border border-green-500/20">
-                <p className="text-[8px] font-bold text-green-500 uppercase">Доход</p>
-                <p className="text-lg font-black">+{pageData?.income.toLocaleString()}</p>
+                <p className="text-[8px] font-bold text-green-500 uppercase">Пришло</p>
+                <p className="text-lg font-black text-green-400">+{pageData?.income.toLocaleString()}</p>
               </div>
               <div className="bg-red-500/10 p-3 rounded-2xl border border-red-500/20">
-                <p className="text-[8px] font-bold text-red-500 uppercase">Расход</p>
-                <p className="text-lg font-black">-{pageData?.expense.toLocaleString()}</p>
+                <p className="text-[8px] font-bold text-red-500 uppercase">Ушло</p>
+                <p className="text-lg font-black text-red-400">-{pageData?.expense.toLocaleString()}</p>
               </div>
             </div>
           </Card>
-          <div className="space-y-4">
+          <div className="space-y-3">
             {pageData?.categories.map((cat, i) => (
-              <div key={i} className="flex justify-between items-center bg-card p-4 rounded-2xl border">
-                <span className="font-bold">{cat.name}</span>
-                <span className={`font-black ${cat.type === 'income' ? 'text-green-500' : ''}`}>
+              <div key={i} className="flex justify-between items-center bg-[#1a1a1a] p-4 rounded-2xl border border-white/5 shadow-sm">
+                <span className="font-bold text-sm">{cat.name}</span>
+                <span className={`font-black ${cat.type === 'income' ? 'text-green-500' : 'text-white'}`}>
                   {cat.type === 'income' ? '+' : ''}{cat.total.toLocaleString()} ₽
                 </span>
               </div>
             ))}
+            {pageData?.categories.length === 0 && (
+                <div className="text-center py-10 opacity-20 font-bold border-2 border-dashed rounded-[2rem]">История пуста</div>
+            )}
           </div>
         </>
       ) : (
         <div className="space-y-4">
-          {pageData?.credits.map(c => (
-            <Card key={c.id} className="p-5 bg-card border-l-4 border-l-blue-500 rounded-2xl">
-              <p className="font-bold opacity-50 text-xs uppercase">{c.item_type}</p>
-              <h3 className="font-black text-xl">{c.name}</h3>
-              <p className="text-2xl font-black mt-2 text-blue-400">{Number(c.total_debt).toLocaleString()} ₽</p>
-            </Card>
-          ))}
+          {pageData?.credits.length === 0 ? (
+              <div className="text-center py-10 opacity-20 font-bold border-2 border-dashed rounded-[2rem]">Нет кредитов</div>
+          ) : (
+            pageData?.credits.map(c => (
+                <Card key={c.id} className="p-5 bg-[#1a1a1a] border-none border-l-4 border-l-blue-500 rounded-2xl">
+                  <p className="font-bold opacity-30 text-[9px] uppercase tracking-widest mb-1">{c.item_type}</p>
+                  <h3 className="font-black text-lg">{c.name}</h3>
+                  <p className="text-2xl font-black mt-2 text-blue-400">{Number(c.total_debt).toLocaleString()} ₽</p>
+                </Card>
+            ))
+          )}
         </div>
       )}
 
       <TabsList className="grid grid-cols-5 w-[calc(100%-2rem)] fixed bottom-8 left-4 right-4 h-16 bg-[#1a1a1a]/90 backdrop-blur-xl border border-white/10 shadow-2xl rounded-3xl p-1">
         {LEDGER_NAMES.map(name => (
-          <TabsTrigger key={name} value={name} onClick={() => setActiveTab(name)} className="data-[state=active]:bg-white data-[state=active]:text-black rounded-2xl text-[10px] font-black">
+          <TabsTrigger key={name} value={name} onClick={() => setActiveTab(name)} className="data-[state=active]:bg-white data-[state=active]:text-black rounded-2xl text-[9px] font-black uppercase transition-all">
             {name}
           </TabsTrigger>
         ))}
@@ -155,19 +175,19 @@ export default function Home() {
 
       <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
         <DrawerTrigger asChild>
-          <Button className="fixed bottom-28 right-6 w-16 h-16 rounded-full bg-white text-black" size="icon"><Plus size={32} /></Button>
+          <Button className="fixed bottom-28 right-6 w-16 h-16 rounded-full bg-white text-black shadow-2xl" size="icon"><Plus size={32} /></Button>
         </DrawerTrigger>
-        <DrawerContent className="bg-[#121212] border-none text-white">
+        <DrawerContent className="bg-[#0f0f0f] border-t border-white/10 text-white">
           <div className="mx-auto w-full max-w-md p-6">
-            <DrawerHeader><DrawerTitle className="font-black italic uppercase">Записать</DrawerTitle></DrawerHeader>
+            <DrawerHeader className="px-0"><DrawerTitle className="font-black italic uppercase tracking-tighter text-2xl">Записать операцию</DrawerTitle></DrawerHeader>
             <div className="space-y-4 mt-4">
               <div className="flex gap-2 bg-white/5 p-1 rounded-2xl">
-                <Button variant={type === "expense" ? "default" : "ghost"} className="flex-1" onClick={() => setType("expense")}>Расход</Button>
-                <Button variant={type === "income" ? "default" : "ghost"} className="flex-1" onClick={() => setType("income")}>Доход</Button>
+                <Button variant={type === "expense" ? "default" : "ghost"} className="flex-1 rounded-xl font-bold" onClick={() => setType("expense")}>Расход</Button>
+                <Button variant={type === "income" ? "default" : "ghost"} className="flex-1 rounded-xl font-bold" onClick={() => setType("income")}>Доход</Button>
               </div>
-              <Input type="number" placeholder="0 ₽" value={amount} onChange={(e) => setAmount(e.target.value)} className="h-20 text-4xl text-center font-black bg-transparent border-white/10" />
-              <Input type="text" placeholder="Категория" value={category} onChange={(e) => setCategory(e.target.value)} className="h-14 rounded-2xl bg-white/5 border-none" />
-              <Button className="w-full h-16 text-lg font-black bg-white text-black rounded-2xl" onClick={handleAdd}>Готово</Button>
+              <Input type="number" placeholder="0 ₽" value={amount} onChange={(e) => setAmount(e.target.value)} className="h-20 text-4xl text-center font-black bg-transparent border-white/10 outline-none" />
+              <Input type="text" placeholder="На что? (Еда, Машина, ЗП...)" value={category} onChange={(e) => setCategory(e.target.value)} className="h-14 rounded-2xl bg-white/5 border-none px-4 font-bold" />
+              <Button className="w-full h-16 text-lg font-black bg-white text-black rounded-2xl hover:bg-white/90" onClick={handleAdd}>Готово</Button>
             </div>
           </div>
         </DrawerContent>
