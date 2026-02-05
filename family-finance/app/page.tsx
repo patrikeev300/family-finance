@@ -726,19 +726,21 @@ export default function Home() {
       </div>
 
       {/* Кнопка добавления транзакции */}
-      <Button
-        className="fixed bottom-28 right-6 w-16 h-16 rounded-full bg-indigo-600 text-white shadow-xl hover:bg-indigo-700 transition-colors z-50 flex items-center justify-center"
-        onClick={() => {
-          setEditingTx(null);
-          setAmount("");
-          setComment("");
-          setSelectedCategoryId(null);
-          setType("expense");
-          setTxDialogOpen(true);
-        }}
-      >
-        <Plus size={32} strokeWidth={3} />
-      </Button>
+      {!isCredit && (
+        <Button
+          className="fixed bottom-28 right-6 w-16 h-16 rounded-full bg-indigo-600 text-white shadow-xl hover:bg-indigo-700 transition-colors z-50 flex items-center justify-center"
+          onClick={() => {
+            setEditingTx(null);
+            setAmount("");
+            setComment("");
+            setSelectedCategoryId(null);
+            setType("expense");
+            setTxDialogOpen(true);
+          }}
+        >
+          <Plus size={32} strokeWidth={3} />
+        </Button>
+      )}
 
       {/* Dialog для транзакций */}
       <Dialog open={txDialogOpen} onOpenChange={setTxDialogOpen}>
