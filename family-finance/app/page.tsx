@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/client";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import PlusCircle from "lucide-react/dist/esm/icons/plus-circle";
 import {
   Drawer,
   DrawerContent,
@@ -23,9 +22,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogClose,
 } from "@/components/ui/dialog";
-import { Calendar, Plus, ArrowUpCircle, ArrowDownCircle, Trash2, Pencil, CreditCard, Landmark, List, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Calendar,
+  Plus,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  Trash2,
+  Pencil,
+  CreditCard,
+  Landmark,
+  List,
+} from "lucide-react";
 
 const LEDGER_TITLES = ["Настя", "Глеб", "Еда", "ВБ", "Кредиты"];
 
@@ -66,8 +74,8 @@ export default function Home() {
   const [editingTx, setEditingTx] = useState<any | null>(null);
 
   // Категории
-  const [catManagerOpen, setCatManagerOpen] = useState(false); // список категорий
-  const [catDrawerOpen, setCatDrawerOpen] = useState(false); // добавление/редактирование категории
+  const [catManagerOpen, setCatManagerOpen] = useState(false);
+  const [catDrawerOpen, setCatDrawerOpen] = useState(false);
   const [catName, setCatName] = useState("");
   const [catIcon, setCatIcon] = useState("");
   const [catType, setCatType] = useState<"income" | "expense">("expense");
@@ -86,7 +94,7 @@ export default function Home() {
   // Модалки
   const [catTxOpen, setCatTxOpen] = useState(false);
   const [selectedCat, setSelectedCat] = useState<{ name: string; id: string | null; type: string } | null>(null);
-  const [allTxOpen, setAllTxOpen] = useState(false); // список всех транзакций раздела
+  const [allTxOpen, setAllTxOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleteTable, setDeleteTable] = useState<"transactions" | "credit_items" | "categories" | null>(null);
@@ -234,6 +242,18 @@ export default function Home() {
     };
   }, [activeTab, transactions, credits, categories, selectedMonth, ledgers]);
 
+  const formatDate = useCallback((dateString: string) => {
+    if (!dateString) return "—";
+    const date = new Date(dateString);
+    return date.toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }, []);
+
   // Транзакции: добавление/редактирование
   const handleTxSubmit = useCallback(async () => {
     if (!amount || !currentLedger || !supabase) return;
@@ -247,7 +267,7 @@ export default function Home() {
       transaction_type: type,
       category_id: selectedCategoryId || null,
       comment: comment.trim() || null,
-      transaction_date: `${selectedMonth}-15T12:00:00Z`,
+      transaction_date: new Date().toISOString(),
     };
 
     let error;
@@ -269,7 +289,7 @@ export default function Home() {
     setTxDrawerOpen(false);
     window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success");
     refreshData(ledgers.map((l: any) => l.id));
-  }, [amount, currentLedger, supabase, type, selectedCategoryId, comment, selectedMonth, editingTx, profile, ledgers]);
+  }, [amount, currentLedger, supabase, type, selectedCategoryId, comment, editingTx, profile, ledgers]);
 
   // Категории: добавление/редактирование
   const handleCategorySubmit = useCallback(async () => {
@@ -363,18 +383,24 @@ export default function Home() {
     setCatDrawerOpen(true);
   }, []);
 
-  const transactionsByCategory = selectedCat
-    ? transactions.filter(
+  const transactionsByCategory = useMemo(() => {
+    if (!selectedCat || !currentLedger) return [];
+    return transactions
+      .filter(
         (t: any) =>
-          t.ledger_id === currentLedger?.id &&
+          t.ledger_id === currentLedger.id &&
           t.category_id === selectedCat.id &&
           t.transaction_date?.startsWith(selectedMonth)
       )
-    : [];
+      .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime());
+  }, [selectedCat, transactions, currentLedger, selectedMonth]);
 
-  const allTransactions = transactions.filter(
-    (t: any) => t.ledger_id === currentLedger?.id && t.transaction_date?.startsWith(selectedMonth)
-  );
+  const allTransactions = useMemo(() => {
+    if (!currentLedger) return [];
+    return transactions
+      .filter((t: any) => t.ledger_id === currentLedger.id && t.transaction_date?.startsWith(selectedMonth))
+      .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime());
+  }, [transactions, currentLedger, selectedMonth]);
 
   if (loading) {
     return (
@@ -408,19 +434,19 @@ export default function Home() {
 
       {/* Баланс */}
       {!isCredit && pageData && (
-        <Card className="mb-10 bg-gradient-to-br from-zinc-900/90 to-black border border-zinc-700/40 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
+        <Card className="mb-10 bg-zinc-900/90 border border-zinc-700/40 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
           <p className="text-sm opacity-70 mb-3 uppercase tracking-widest font-medium">{activeTab} • Баланс</p>
-          <div className="text-5xl sm:text-6xl md:text-7xl font-black mb-8 bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-400">
+          <div className="text-5xl sm:text-6xl md:text-7xl font-black mb-8 text-white">
             {pageData.balance.toLocaleString("ru-RU")} ₽
           </div>
           <div className="grid grid-cols-2 gap-5 sm:gap-6">
-            <div className="bg-gradient-to-br from-emerald-950/60 to-black p-5 sm:p-6 rounded-2xl border border-emerald-800/30 hover:border-emerald-600/50 transition-all duration-300">
+            <div className="bg-emerald-950/40 p-5 sm:p-6 rounded-2xl border border-emerald-800/30 hover:border-emerald-600/50 transition-all duration-300">
               <ArrowUpCircle className="text-emerald-400 mb-3" size={28} />
               <p className="text-emerald-400 font-bold text-xl sm:text-2xl md:text-3xl">
                 +{pageData.income.toLocaleString("ru-RU")}
               </p>
             </div>
-            <div className="bg-gradient-to-br from-red-950/60 to-black p-5 sm:p-6 rounded-2xl border border-red-800/30 hover:border-red-600/50 transition-all duration-300">
+            <div className="bg-red-950/40 p-5 sm:p-6 rounded-2xl border border-red-800/30 hover:border-red-600/50 transition-all duration-300">
               <ArrowDownCircle className="text-red-400 mb-3" size={28} />
               <p className="text-red-400 font-bold text-xl sm:text-2xl md:text-3xl">
                 -{pageData.expense.toLocaleString("ru-RU")}
@@ -436,7 +462,7 @@ export default function Home() {
           {/* Доходы */}
           <section>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
-              <h2 className="text-3xl sm:text-4xl font-bold flex items-center gap-4 bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-400">
+              <h2 className="text-3xl sm:text-4xl font-bold flex items-center gap-4 text-emerald-300">
                 <ArrowUpCircle size={32} /> Доходы
               </h2>
               <div className="flex gap-3">
@@ -444,9 +470,9 @@ export default function Home() {
                   variant="outline"
                   size="sm"
                   className="border-emerald-600/50 text-emerald-400 hover:bg-emerald-950/50 flex items-center gap-2"
-                  onClick={() => setCatManagerOpen(true)}
+                  onClick={() => setCatManagerOpen(!catManagerOpen)}
                 >
-                  <List size={16} /> Категории
+                  <List size={16} /> {catManagerOpen ? "Скрыть" : "Категории"}
                 </Button>
                 <Button
                   variant="outline"
@@ -459,9 +485,8 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Скрытый блок категорий — открывается по кнопке */}
             {catManagerOpen && (
-              <div className="bg-zinc-900/70 border border-zinc-800 rounded-3xl p-6 mb-8 backdrop-blur-sm animate-fadeIn">
+              <div className="bg-zinc-900/70 border border-zinc-800 rounded-3xl p-6 mb-8 backdrop-blur-sm">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-2xl font-bold text-emerald-300">Категории доходов</h3>
                   <Button
@@ -474,9 +499,9 @@ export default function Home() {
                       setCatType("income");
                       setCatDrawerOpen(true);
                     }}
-                    className="text-emerald-400 hover:text-emerald-300"
+                    className="text-emerald-400 hover:text-emerald-300 flex items-center gap-2"
                   >
-                    <PlusCircle size={20} className="mr-2" /> Добавить
+                    <Plus size={16} /> Добавить
                   </Button>
                 </div>
 
@@ -525,21 +550,19 @@ export default function Home() {
                 <div
                   key={i}
                   onClick={() => setSelectedCat({ name: g.name, id: categories.find(c => c.name === g.name)?.id || null, type: "income" })}
-                  className="bg-gradient-to-r from-zinc-900/90 to-black p-5 sm:p-6 rounded-3xl mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center border border-zinc-700/40 hover:border-emerald-600/60 hover:shadow-emerald-900/20 transition-all duration-300 cursor-pointer group backdrop-blur-sm"
+                  className="bg-zinc-900/90 p-5 rounded-3xl mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center border border-zinc-700/40 hover:border-emerald-600/60 transition-all duration-300 cursor-pointer backdrop-blur-sm"
                 >
-                  <div className="flex items-center gap-4 sm:gap-5 mb-3 sm:mb-0 flex-1">
-                    {g.icon && <span className="text-4xl sm:text-5xl transition-transform group-hover:scale-110 duration-300">{g.icon}</span>}
-                    <div className="font-semibold text-xl sm:text-2xl">{g.name}</div>
+                  <div className="flex items-center gap-4 flex-1">
+                    {g.icon && <span className="text-4xl">{g.icon}</span>}
+                    <div className="font-semibold text-xl">{g.name}</div>
                   </div>
-                  <div className="flex items-center gap-4 sm:gap-6">
-                    <div className="text-emerald-400 font-black text-xl sm:text-2xl group-hover:scale-105 transition-transform">
-                      +{g.total.toLocaleString("ru-RU")} ₽
-                    </div>
+                  <div className="text-emerald-400 font-bold text-xl">
+                    +{g.total.toLocaleString("ru-RU")} ₽
                   </div>
                 </div>
               ))
             ) : (
-              <div className="text-center py-16 sm:py-20 opacity-60 text-lg sm:text-xl border-2 border-dashed border-zinc-700/50 rounded-3xl backdrop-blur-sm">
+              <div className="text-center py-16 opacity-60 text-lg border-2 border-dashed border-zinc-700/50 rounded-3xl backdrop-blur-sm">
                 Нет доходов за месяц
               </div>
             )}
@@ -548,7 +571,7 @@ export default function Home() {
           {/* Расходы */}
           <section>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
-              <h2 className="text-3xl sm:text-4xl font-bold flex items-center gap-4 bg-clip-text text-transparent bg-gradient-to-r from-red-400 to-rose-500">
+              <h2 className="text-3xl sm:text-4xl font-bold flex items-center gap-4 text-red-300">
                 <ArrowDownCircle size={32} /> Расходы
               </h2>
               <div className="flex gap-3">
@@ -556,9 +579,9 @@ export default function Home() {
                   variant="outline"
                   size="sm"
                   className="border-red-600/50 text-red-400 hover:bg-red-950/50 flex items-center gap-2"
-                  onClick={() => setCatManagerOpen(true)}
+                  onClick={() => setCatManagerOpen(!catManagerOpen)}
                 >
-                  <List size={16} /> Категории
+                  <List size={16} /> {catManagerOpen ? "Скрыть" : "Категории"}
                 </Button>
                 <Button
                   variant="outline"
@@ -571,7 +594,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Скрытый блок категорий для расходов */}
             {catManagerOpen && (
               <div className="bg-zinc-900/70 border border-zinc-800 rounded-3xl p-6 mb-8 backdrop-blur-sm animate-fadeIn">
                 <div className="flex items-center justify-between mb-6">
@@ -586,9 +608,9 @@ export default function Home() {
                       setCatType("expense");
                       setCatDrawerOpen(true);
                     }}
-                    className="text-red-400 hover:text-red-300"
+                    className="text-red-400 hover:text-red-300 flex items-center gap-2"
                   >
-                    <PlusCircle size={20} className="mr-2" /> Добавить
+                    <Plus size={16} /> Добавить
                   </Button>
                 </div>
 
@@ -637,21 +659,19 @@ export default function Home() {
                 <div
                   key={i}
                   onClick={() => setSelectedCat({ name: g.name, id: categories.find(c => c.name === g.name)?.id || null, type: "expense" })}
-                  className="bg-gradient-to-r from-zinc-900/90 to-black p-5 sm:p-6 rounded-3xl mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center border border-zinc-700/40 hover:border-red-600/60 hover:shadow-red-900/20 transition-all duration-300 cursor-pointer group backdrop-blur-sm"
+                  className="bg-zinc-900/90 p-5 rounded-3xl mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center border border-zinc-700/40 hover:border-red-600/60 transition-all duration-300 cursor-pointer backdrop-blur-sm"
                 >
-                  <div className="flex items-center gap-4 sm:gap-5 mb-3 sm:mb-0 flex-1">
-                    {g.icon && <span className="text-4xl sm:text-5xl transition-transform group-hover:scale-110 duration-300">{g.icon}</span>}
-                    <div className="font-semibold text-xl sm:text-2xl">{g.name}</div>
+                  <div className="flex items-center gap-4 flex-1">
+                    {g.icon && <span className="text-4xl">{g.icon}</span>}
+                    <div className="font-semibold text-xl">{g.name}</div>
                   </div>
-                  <div className="flex items-center gap-4 sm:gap-6">
-                    <div className="text-red-400 font-black text-xl sm:text-2xl group-hover:scale-105 transition-transform">
-                      -{g.total.toLocaleString("ru-RU")} ₽
-                    </div>
+                  <div className="text-red-400 font-bold text-xl">
+                    -{g.total.toLocaleString("ru-RU")} ₽
                   </div>
                 </div>
               ))
             ) : (
-              <div className="text-center py-16 sm:py-20 opacity-60 text-lg sm:text-xl border-2 border-dashed border-zinc-700/50 rounded-3xl backdrop-blur-sm">
+              <div className="text-center py-16 opacity-60 text-lg border-2 border-dashed border-zinc-700/50 rounded-3xl backdrop-blur-sm">
                 Нет расходов за месяц
               </div>
             )}
@@ -691,7 +711,7 @@ export default function Home() {
                 .map((c: any) => (
                   <Card
                     key={c.id}
-                    className="bg-gradient-to-br from-purple-950/50 to-black border border-purple-800/40 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md hover:scale-[1.02] transition-all duration-300"
+                    className="bg-zinc-900/90 border border-purple-800/40 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md hover:scale-[1.02] transition-all duration-300"
                   >
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5">
                       <h4 className="font-bold text-2xl sm:text-3xl">{c.name}</h4>
@@ -773,7 +793,7 @@ export default function Home() {
                 .map((c: any) => (
                   <Card
                     key={c.id}
-                    className="bg-gradient-to-br from-pink-950/50 to-black border border-pink-800/40 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md hover:scale-[1.02] transition-all duration-300"
+                    className="bg-zinc-900/90 border border-pink-800/40 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md hover:scale-[1.02] transition-all duration-300"
                   >
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                       <h4 className="font-bold text-2xl sm:text-3xl">{c.name}</h4>
@@ -880,64 +900,54 @@ export default function Home() {
             <Plus size={32} strokeWidth={3} />
           </Button>
         </DrawerTrigger>
-        <DrawerContent className="bg-gradient-to-b from-zinc-950 via-black to-zinc-950 border-t border-zinc-700/50 text-white max-h-[92vh] backdrop-blur-xl">
-          <DrawerHeader className="border-b border-zinc-700/50 pb-6">
-            <DrawerTitle className="text-4xl md:text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-500 to-pink-500 text-center">
+        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white max-h-[80vh] backdrop-blur-xl">
+          <DrawerHeader className="border-b border-zinc-700/50 pb-5">
+            <DrawerTitle className="text-3xl font-bold text-center text-white">
               {editingTx ? "Редактировать запись" : "Новая запись"}
             </DrawerTitle>
-            <p className="text-center text-zinc-400 mt-3 text-lg">
-              {activeTab} • {type === "income" ? "Пополнение" : "Списание"}
-            </p>
           </DrawerHeader>
 
-          <div className="p-6 md:p-8 space-y-8 overflow-y-auto">
-            <div className="flex gap-4 bg-zinc-900/60 p-2.5 rounded-2xl border border-zinc-700/50 backdrop-blur-md">
+          <div className="p-6 space-y-5">
+            <div className="flex gap-3">
               <Button
-                className={`flex-1 h-14 md:h-16 text-base md:text-lg font-bold rounded-xl transition-all duration-300 ${
-                  type === "expense"
-                    ? "bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-red-900/40"
-                    : "bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700"
+                className={`flex-1 h-11 text-base font-medium rounded-lg transition-all ${
+                  type === "expense" ? "bg-red-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
                 }`}
-                onClick={() => {
-                  setType("expense");
-                  setSelectedCategoryId(null);
-                }}
+                onClick={() => setType("expense")}
               >
                 Расход
               </Button>
               <Button
-                className={`flex-1 h-14 md:h-16 text-base md:text-lg font-bold rounded-xl transition-all duration-300 ${
-                  type === "income"
-                    ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-emerald-900/40"
-                    : "bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700"
+                className={`flex-1 h-11 text-base font-medium rounded-lg transition-all ${
+                  type === "income" ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
                 }`}
-                onClick={() => {
-                  setType("income");
-                  setSelectedCategoryId(null);
-                }}
+                onClick={() => setType("income")}
               >
                 Доход
               </Button>
             </div>
 
-            <div className="text-center">
-              <Input
-                type="number"
-                placeholder="0"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="text-8xl md:text-9xl font-black text-center h-40 md:h-52 bg-transparent border-none focus:ring-0 placeholder:text-zinc-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                autoFocus
-              />
-              <p className="text-xl md:text-2xl opacity-70 mt-4 tracking-widest font-medium">₽</p>
+            <div>
+              <label className="block text-sm font-medium mb-2 text-zinc-300">Сумма</label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  placeholder="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="h-12 bg-zinc-900 border-zinc-700 text-2xl font-bold text-center rounded-xl focus:border-purple-500 pl-4 pr-12"
+                  autoFocus
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xl text-zinc-500">₽</span>
+              </div>
             </div>
 
             <div>
-              <label className="block text-lg md:text-xl font-medium mb-3 text-zinc-300">Категория</label>
+              <label className="block text-sm font-medium mb-2 text-zinc-300">Категория</label>
               <select
                 value={selectedCategoryId || ""}
                 onChange={(e) => setSelectedCategoryId(e.target.value || null)}
-                className="w-full h-14 md:h-16 bg-zinc-900/70 border border-zinc-700 rounded-2xl px-5 md:px-6 text-lg md:text-xl focus:outline-none focus:border-purple-500 transition-all duration-300 backdrop-blur-sm"
+                className="w-full h-11 bg-zinc-900 border border-zinc-700 rounded-xl px-4 text-base focus:border-purple-500"
               >
                 <option value="">Без категории</option>
                 {categories
@@ -951,22 +961,22 @@ export default function Home() {
             </div>
 
             <div>
-              <label className="block text-lg md:text-xl font-medium mb-3 text-zinc-300">Комментарий</label>
+              <label className="block text-sm font-medium mb-2 text-zinc-300">Комментарий</label>
               <Input
-                placeholder="Для чего именно..."
+                placeholder="Необязательно"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                className="h-14 md:h-16 bg-zinc-900/70 border-zinc-700 text-lg md:text-xl rounded-2xl px-5 md:px-6 backdrop-blur-sm"
+                className="h-11 bg-zinc-900 border-zinc-700 rounded-xl px-4 text-base"
               />
             </div>
 
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex gap-3">
               <Button
                 onClick={handleTxSubmit}
                 disabled={!amount}
-                className="flex-1 h-16 md:h-20 text-xl md:text-2xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:brightness-110 text-white rounded-2xl shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                className="flex-1 h-12 text-lg font-bold bg-gradient-to-r from-indigo-600 to-purple-600 hover:brightness-110 text-white rounded-xl disabled:opacity-50"
               >
-                {editingTx ? "Сохранить изменения" : "Добавить"}
+                {editingTx ? "Сохранить" : "Добавить"}
               </Button>
 
               {editingTx && (
@@ -976,7 +986,7 @@ export default function Home() {
                     setEditingTx(null);
                     setTxDrawerOpen(false);
                   }}
-                  className="flex-1 h-16 md:h-20 text-xl md:text-2xl border-zinc-600 text-zinc-300 hover:bg-zinc-800"
+                  className="flex-1 h-12 text-lg border-zinc-600 text-zinc-300 hover:bg-zinc-800"
                 >
                   Отмена
                 </Button>
@@ -988,31 +998,31 @@ export default function Home() {
 
       {/* Drawer управления категориями */}
       <Drawer open={catManagerOpen} onOpenChange={setCatManagerOpen}>
-        <DrawerContent className="bg-gradient-to-b from-zinc-950 via-black to-zinc-950 border-t border-zinc-700/50 text-white max-h-[90vh] backdrop-blur-xl">
-          <DrawerHeader className="border-b border-zinc-700/50 pb-6">
-            <DrawerTitle className="text-4xl md:text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-500 to-pink-500 text-center">
+        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white max-h-[90vh] backdrop-blur-xl">
+          <DrawerHeader className="border-b border-zinc-700/50 pb-5">
+            <DrawerTitle className="text-3xl font-bold text-center text-white">
               Категории {activeTab}
             </DrawerTitle>
           </DrawerHeader>
 
-          <div className="p-6 space-y-6 overflow-y-auto">
+          <div className="p-6 space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {categories
                 .filter((c: Category) => c.ledger_id === currentLedger.id && c.type === (activeTab === "Доходы" ? "income" : "expense"))
                 .map((c: Category) => (
                   <div
                     key={c.id}
-                    className="bg-zinc-950/70 p-5 rounded-2xl flex justify-between items-center border border-zinc-800 hover:border-zinc-600 transition-all backdrop-blur-sm"
+                    className="bg-zinc-900 p-4 rounded-2xl flex justify-between items-center border border-zinc-800 hover:border-zinc-600 transition-all"
                   >
                     <div className="flex items-center gap-4">
                       {c.icon && <span className="text-3xl">{c.icon}</span>}
-                      <span className="font-medium text-lg">{c.name}</span>
+                      <span className="font-medium">{c.name}</span>
                     </div>
                     <div className="flex gap-3">
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-indigo-400 hover:text-indigo-300 hover:bg-indigo-950/50"
+                        className="text-indigo-400 hover:text-indigo-300"
                         onClick={() => openEditCategory(c)}
                       >
                         <Pencil size={18} />
@@ -1020,7 +1030,7 @@ export default function Home() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-red-400 hover:text-red-300 hover:bg-red-950/50"
+                        className="text-red-400 hover:text-red-300"
                         onClick={() => {
                           setDeleteId(c.id);
                           setDeleteTable("categories");
@@ -1035,7 +1045,7 @@ export default function Home() {
             </div>
 
             <Button
-              className="w-full h-16 text-xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:brightness-110 text-white rounded-2xl shadow-2xl transition-all duration-300"
+              className="w-full h-14 text-lg font-bold bg-gradient-to-r from-indigo-600 to-purple-600 hover:brightness-110 text-white rounded-xl"
               onClick={() => {
                 setEditingCat(null);
                 setCatName("");
@@ -1044,13 +1054,13 @@ export default function Home() {
                 setCatDrawerOpen(true);
               }}
             >
-              <Plus size={24} className="mr-3" /> Добавить категорию
+              + Добавить категорию
             </Button>
           </div>
 
-          <DrawerFooter className="border-t border-zinc-700/50 pt-6">
+          <DrawerFooter className="border-t border-zinc-700/50 pt-5">
             <DrawerClose asChild>
-              <Button variant="outline" className="w-full border-zinc-600 text-zinc-300 hover:bg-zinc-800 text-lg">
+              <Button variant="outline" className="w-full border-zinc-600 text-zinc-300 hover:bg-zinc-800">
                 Закрыть
               </Button>
             </DrawerClose>
@@ -1063,50 +1073,46 @@ export default function Home() {
         setCatDrawerOpen(open);
         if (!open) setEditingCat(null);
       }}>
-        <DrawerContent className="bg-gradient-to-b from-zinc-950 via-black to-zinc-950 border-t border-zinc-700/50 text-white max-h-[80vh] backdrop-blur-xl">
-          <DrawerHeader className="border-b border-zinc-700/50 pb-6">
-            <DrawerTitle className="text-4xl md:text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-500 to-pink-500 text-center">
+        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white max-h-[70vh] backdrop-blur-xl">
+          <DrawerHeader className="border-b border-zinc-700/50 pb-5">
+            <DrawerTitle className="text-3xl font-bold text-center text-white">
               {editingCat ? "Редактировать категорию" : "Новая категория"}
             </DrawerTitle>
           </DrawerHeader>
 
-          <div className="p-6 md:p-8 space-y-8 overflow-y-auto">
+          <div className="p-6 space-y-5">
             <div>
-              <label className="block text-lg md:text-xl font-medium mb-3 text-zinc-300">Название</label>
+              <label className="block text-sm font-medium mb-2 text-zinc-300">Название</label>
               <Input
-                placeholder="Например: Зарплата / Продукты"
+                placeholder="Например: Зарплата"
                 value={catName}
                 onChange={(e) => setCatName(e.target.value)}
-                className="h-14 md:h-16 bg-zinc-900/70 border-zinc-700 text-lg md:text-xl rounded-2xl px-6 backdrop-blur-sm"
+                className="h-11 bg-zinc-900 border-zinc-700 rounded-xl px-4"
               />
             </div>
 
             <div>
-              <label className="block text-lg md:text-xl font-medium mb-3 text-zinc-300">Иконка (эмодзи, опционально)</label>
+              <label className="block text-sm font-medium mb-2 text-zinc-300">Иконка (эмодзи)</label>
               <Input
-                placeholder="💰 🛒 🍔"
+                placeholder="💰"
                 value={catIcon}
                 onChange={(e) => setCatIcon(e.target.value)}
-                className="h-14 md:h-16 bg-zinc-900/70 border-zinc-700 text-lg md:text-xl rounded-2xl px-6 backdrop-blur-sm"
+                className="h-11 bg-zinc-900 border-zinc-700 rounded-xl px-4"
               />
             </div>
 
-            <div className="flex gap-4 bg-zinc-900/60 p-2.5 rounded-2xl border border-zinc-700/50 backdrop-blur-md">
+            <div className="flex gap-3">
               <Button
-                className={`flex-1 h-14 md:h-16 text-base md:text-lg font-bold rounded-xl transition-all duration-300 ${
-                  catType === "expense"
-                    ? "bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-red-900/40"
-                    : "bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700"
+                className={`flex-1 h-11 text-base font-medium rounded-xl ${
+                  catType === "expense" ? "bg-red-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
                 }`}
                 onClick={() => setCatType("expense")}
               >
                 Расход
               </Button>
               <Button
-                className={`flex-1 h-14 md:h-16 text-base md:text-lg font-bold rounded-xl transition-all duration-300 ${
-                  catType === "income"
-                    ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-emerald-900/40"
-                    : "bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700"
+                className={`flex-1 h-11 text-base font-medium rounded-xl ${
+                  catType === "income" ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
                 }`}
                 onClick={() => setCatType("income")}
               >
@@ -1114,13 +1120,13 @@ export default function Home() {
               </Button>
             </div>
 
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex gap-3">
               <Button
                 onClick={handleCategorySubmit}
                 disabled={!catName}
-                className="flex-1 h-16 md:h-20 text-xl md:text-2xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:brightness-110 text-white rounded-2xl shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                className="flex-1 h-12 text-lg font-bold bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl"
               >
-                {editingCat ? "Сохранить" : "Добавить категорию"}
+                {editingCat ? "Сохранить" : "Добавить"}
               </Button>
 
               {editingCat && (
@@ -1130,7 +1136,7 @@ export default function Home() {
                     setEditingCat(null);
                     setCatDrawerOpen(false);
                   }}
-                  className="flex-1 h-16 md:h-20 text-xl md:text-2xl border-zinc-600 text-zinc-300 hover:bg-zinc-800"
+                  className="flex-1 h-12 text-lg border-zinc-600 text-zinc-300 hover:bg-zinc-800"
                 >
                   Отмена
                 </Button>
@@ -1140,7 +1146,7 @@ export default function Home() {
             {editingCat && (
               <Button
                 variant="destructive"
-                className="w-full h-16 text-xl font-bold"
+                className="w-full h-12 text-lg font-bold"
                 onClick={() => {
                   if (editingCat) {
                     setDeleteId(editingCat.id);
@@ -1161,79 +1167,77 @@ export default function Home() {
         setCreditDrawerOpen(open);
         if (!open) setEditingCredit(null);
       }}>
-        <DrawerContent className="bg-gradient-to-b from-zinc-950 via-black to-zinc-950 border-t border-zinc-700/50 text-white max-h-[92vh] backdrop-blur-xl">
-          <DrawerHeader className="border-b border-zinc-700/50 pb-6">
-            <DrawerTitle className="text-4xl md:text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-rose-500 text-center">
+        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white max-h-[90vh] backdrop-blur-xl">
+          <DrawerHeader className="border-b border-zinc-700/50 pb-5">
+            <DrawerTitle className="text-3xl font-bold text-center text-white">
               {editingCredit ? "Редактировать" : "Добавить"} {creditType === "loan" ? "кредит" : "карту"}
             </DrawerTitle>
           </DrawerHeader>
 
-          <div className="p-6 md:p-8 space-y-8 overflow-y-auto">
+          <div className="p-6 space-y-5">
             <div>
-              <label className="block text-lg md:text-xl font-medium mb-3 text-zinc-300">Название</label>
+              <label className="block text-sm font-medium mb-2 text-zinc-300">Название</label>
               <Input
-                placeholder="Например: Ипотека Сбер / Тинькофф Black"
+                placeholder="Например: Ипотека Сбер"
                 value={creditName}
                 onChange={(e) => setCreditName(e.target.value)}
-                className="h-14 md:h-16 bg-zinc-900/70 border-zinc-700 text-lg md:text-xl rounded-2xl px-6 backdrop-blur-sm"
+                className="h-11 bg-zinc-900 border-zinc-700 rounded-xl px-4"
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-lg md:text-xl font-medium mb-3 text-zinc-300">
-                  {creditType === "loan" ? "Общий долг" : "Текущая задолженность"}
-                </label>
-                <Input
-                  type="number"
-                  placeholder="0"
-                  value={creditDebt}
-                  onChange={(e) => setCreditDebt(e.target.value)}
-                  className="h-14 md:h-16 bg-zinc-900/70 border-zinc-700 text-lg md:text-xl rounded-2xl px-6 backdrop-blur-sm"
-                />
-              </div>
-
-              {creditType === "credit_card" && (
-                <>
-                  <div>
-                    <label className="block text-lg md:text-xl font-medium mb-3 text-zinc-300">Лимит карты</label>
-                    <Input
-                      type="number"
-                      placeholder="0"
-                      value={creditLimit}
-                      onChange={(e) => setCreditLimit(e.target.value)}
-                      className="h-14 md:h-16 bg-zinc-900/70 border-zinc-700 text-lg md:text-xl rounded-2xl px-6 backdrop-blur-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-lg md:text-xl font-medium mb-3 text-zinc-300">Лимит переводов</label>
-                    <Input
-                      type="number"
-                      placeholder="0"
-                      value={creditTransferLimit}
-                      onChange={(e) => setCreditTransferLimit(e.target.value)}
-                      className="h-14 md:h-16 bg-zinc-900/70 border-zinc-700 text-lg md:text-xl rounded-2xl px-6 backdrop-blur-sm"
-                    />
-                  </div>
-                </>
-              )}
-
-              <div className="md:col-span-2">
-                <label className="block text-lg md:text-xl font-medium mb-3 text-zinc-300">Дата следующего платежа</label>
-                <Input
-                  type="date"
-                  value={creditDueDate}
-                  onChange={(e) => setCreditDueDate(e.target.value)}
-                  className="h-14 md:h-16 bg-zinc-900/70 border-zinc-700 text-lg md:text-xl rounded-2xl px-6 backdrop-blur-sm"
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium mb-2 text-zinc-300">
+                {creditType === "loan" ? "Общий долг" : "Задолженность"}
+              </label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={creditDebt}
+                onChange={(e) => setCreditDebt(e.target.value)}
+                className="h-11 bg-zinc-900 border-zinc-700 rounded-xl px-4"
+              />
             </div>
 
-            <div className="flex flex-col md:flex-row gap-4">
+            {creditType === "credit_card" && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-zinc-300">Лимит карты</label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={creditLimit}
+                    onChange={(e) => setCreditLimit(e.target.value)}
+                    className="h-11 bg-zinc-900 border-zinc-700 rounded-xl px-4"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-zinc-300">Лимит переводов</label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={creditTransferLimit}
+                    onChange={(e) => setCreditTransferLimit(e.target.value)}
+                    className="h-11 bg-zinc-900 border-zinc-700 rounded-xl px-4"
+                  />
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium mb-2 text-zinc-300">Дата платежа</label>
+              <Input
+                type="date"
+                value={creditDueDate}
+                onChange={(e) => setCreditDueDate(e.target.value)}
+                className="h-11 bg-zinc-900 border-zinc-700 rounded-xl px-4"
+              />
+            </div>
+
+            <div className="flex gap-3">
               <Button
                 onClick={handleCreditSubmit}
                 disabled={!creditName}
-                className="flex-1 h-16 md:h-20 text-xl md:text-2xl font-black bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:brightness-110 text-white rounded-2xl shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                className="flex-1 h-12 text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl disabled:opacity-50"
               >
                 {editingCredit ? "Сохранить" : "Добавить"}
               </Button>
@@ -1245,7 +1249,7 @@ export default function Home() {
                     setEditingCredit(null);
                     setCreditDrawerOpen(false);
                   }}
-                  className="flex-1 h-16 md:h-20 text-xl md:text-2xl border-zinc-600 text-zinc-300 hover:bg-zinc-800"
+                  className="flex-1 h-12 text-lg border-zinc-600 text-zinc-300 hover:bg-zinc-800"
                 >
                   Отмена
                 </Button>
@@ -1257,9 +1261,9 @@ export default function Home() {
 
       {/* Список всех транзакций раздела */}
       <Drawer open={allTxOpen} onOpenChange={setAllTxOpen}>
-        <DrawerContent className="bg-gradient-to-b from-zinc-950 to-black border-t border-zinc-700/50 text-white max-h-[90vh] backdrop-blur-xl">
-          <DrawerHeader className="border-b border-zinc-700/50 pb-6">
-            <DrawerTitle className="text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-500">
+        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white max-h-[90vh] backdrop-blur-xl">
+          <DrawerHeader className="border-b border-zinc-700/50 pb-5">
+            <DrawerTitle className="text-3xl font-bold text-center text-white">
               Все транзакции {activeTab}
             </DrawerTitle>
           </DrawerHeader>
@@ -1269,32 +1273,28 @@ export default function Home() {
               allTransactions.map((t: any) => (
                 <div
                   key={t.id}
-                  className="bg-zinc-900/70 p-5 md:p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border border-zinc-800 hover:border-zinc-600 transition-all backdrop-blur-sm"
+                  className="bg-zinc-900 p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border border-zinc-800 hover:border-zinc-600 transition-all"
                 >
                   <div className="flex-1">
-                    <p className="font-medium text-lg md:text-xl">{t.comment || "Без комментария"}</p>
-                    <p className="text-sm md:text-base opacity-70 mt-1">
-                      {new Date(t.transaction_date).toLocaleString("ru-RU", {
-                        day: "2-digit",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                    <p className="font-medium text-lg">{t.comment || "Без комментария"}</p>
+                    <p className="text-sm opacity-70 mt-1 flex items-center gap-2">
+                      <Calendar size={14} className="text-zinc-500" />
+                      {formatDate(t.transaction_date)}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end">
-                    <p className={`font-black text-xl md:text-2xl ${t.transaction_type === "income" ? "text-emerald-400" : "text-red-400"}`}>
+                  <div className="flex items-center gap-6 w-full sm:w-auto justify-between sm:justify-end">
+                    <p className={`font-black text-xl ${t.transaction_type === "income" ? "text-emerald-400" : "text-red-400"}`}>
                       {t.transaction_type === "income" ? "+" : "-"}{Number(t.amount).toLocaleString("ru-RU")} ₽
                     </p>
                     <div className="flex gap-3">
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-indigo-400 hover:text-indigo-300 hover:bg-indigo-950/50"
+                        className="text-indigo-400 hover:text-indigo-300"
                         onClick={() => {
                           setEditingTx(t);
-                          setAmount(t.amount);
+                          setAmount(t.amount.toString());
                           setType(t.transaction_type);
                           setComment(t.comment || "");
                           setSelectedCategoryId(t.category_id || null);
@@ -1306,7 +1306,7 @@ export default function Home() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-red-400 hover:text-red-300 hover:bg-red-950/50"
+                        className="text-red-400 hover:text-red-300"
                         onClick={() => {
                           setDeleteId(t.id);
                           setDeleteTable("transactions");
@@ -1320,15 +1320,92 @@ export default function Home() {
                 </div>
               ))
             ) : (
-              <div className="text-center py-20 opacity-70 text-xl md:text-2xl">
+              <div className="text-center py-20 opacity-70 text-xl">
                 Нет транзакций за этот месяц
               </div>
             )}
           </div>
 
-          <DrawerFooter className="border-t border-zinc-700/50 pt-6">
+          <DrawerFooter className="border-t border-zinc-700/50 pt-5">
             <DrawerClose asChild>
-              <Button variant="outline" className="w-full border-zinc-600 text-zinc-300 hover:bg-zinc-800 text-lg">
+              <Button variant="outline" className="w-full border-zinc-600 text-zinc-300 hover:bg-zinc-800">
+                Закрыть
+              </Button>
+            </DrawerClose>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+
+      {/* Список транзакций по категории */}
+      <Drawer open={catTxOpen} onOpenChange={setCatTxOpen}>
+        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white max-h-[90vh] backdrop-blur-xl">
+          <DrawerHeader className="border-b border-zinc-700/50 pb-5">
+            <DrawerTitle className="text-3xl font-bold text-center text-white">
+              {selectedCat?.name}
+            </DrawerTitle>
+          </DrawerHeader>
+
+          <div className="p-6 space-y-5 overflow-y-auto">
+            {transactionsByCategory.length ? (
+              transactionsByCategory.map((t: any) => (
+                <div
+                  key={t.id}
+                  className="bg-zinc-900 p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border border-zinc-800 hover:border-zinc-600 transition-all"
+                >
+                  <div className="flex-1">
+                    <p className="font-medium text-lg">{t.comment || "Без комментария"}</p>
+                    <p className="text-sm opacity-70 mt-1 flex items-center gap-2">
+                      <Calendar size={14} className="text-zinc-500" />
+                      {formatDate(t.transaction_date)}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-6 w-full sm:w-auto justify-between sm:justify-end">
+                    <p className={`font-black text-xl ${t.transaction_type === "income" ? "text-emerald-400" : "text-red-400"}`}>
+                      {t.transaction_type === "income" ? "+" : "-"}{Number(t.amount).toLocaleString("ru-RU")} ₽
+                    </p>
+                    <div className="flex gap-3">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-indigo-400 hover:text-indigo-300"
+                        onClick={() => {
+                          setEditingTx(t);
+                          setAmount(t.amount.toString());
+                          setType(t.transaction_type);
+                          setComment(t.comment || "");
+                          setSelectedCategoryId(t.category_id || null);
+                          setTxDrawerOpen(true);
+                        }}
+                      >
+                        <Pencil size={20} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-400 hover:text-red-300"
+                        onClick={() => {
+                          setDeleteId(t.id);
+                          setDeleteTable("transactions");
+                          setDeleteDialogOpen(true);
+                        }}
+                      >
+                        <Trash2 size={20} />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-20 opacity-70 text-xl">
+                Нет транзакций в этой категории
+              </div>
+            )}
+          </div>
+
+          <DrawerFooter className="border-t border-zinc-700/50 pt-5">
+            <DrawerClose asChild>
+              <Button variant="outline" className="w-full border-zinc-600 text-zinc-300 hover:bg-zinc-800">
                 Закрыть
               </Button>
             </DrawerClose>
@@ -1338,7 +1415,7 @@ export default function Home() {
 
       {/* Универсальный диалог подтверждения удаления */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="bg-zinc-950 border-zinc-700 max-w-md backdrop-blur-xl">
+        <DialogContent className="bg-zinc-950 border-zinc-700 max-w-md">
           <DialogHeader>
             <DialogTitle className="text-2xl md:text-3xl text-red-400 font-bold">Удалить?</DialogTitle>
           </DialogHeader>
