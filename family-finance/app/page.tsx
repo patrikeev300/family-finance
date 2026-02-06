@@ -126,8 +126,8 @@ export default function Home() {
 
   const isFemale = activeTab === "Настя";
   const iMust = isFemale ? "Я должна" : "Я должен";
-  const iHaveNoDebts = isFemale ? "У меня нет долгов" : "У меня нет долгов";
-  const myDebts = "Мои долги";
+  const myDebtsTitle = "Мои долги";
+  const noDebtsText = isFemale ? "У меня нет долгов" : "У меня нет долгов";
 
   useEffect(() => {
     if (typeof window !== "undefined") initApp();
@@ -199,32 +199,33 @@ export default function Home() {
     }
   }
 
-    async function refreshData(ledgerIds: string[]) {
+  async function refreshData(ledgerIds: string[]) {
     if (!ledgerIds?.length) return;
+
+    const currentLedgerId = ledgers.find(l => l.title === activeTab)?.id;
+
+    if (!currentLedgerId) return;
 
     const { data: tx } = await supabase
       .from("transactions")
       .select("*")
-      .in("ledger_id", ledgerIds)
+      .eq("ledger_id", currentLedgerId)  // Только текущий ledger
       .order("transaction_date", { ascending: false });
 
     const { data: cr } = await supabase
       .from("credit_items")
       .select("*")
-      .in("ledger_id", ledgerIds);
+      .eq("ledger_id", currentLedgerId);
 
     const { data: cats } = await supabase
       .from("categories")
       .select("*")
-      .in("ledger_id", ledgerIds);
+      .eq("ledger_id", currentLedgerId);
 
-    // КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: долги ТОЛЬКО по текущему ledger (текущей вкладке)
-    // Это делает долги полностью персональными — чужие не видны
-    const currentLedgerId = ledgers.find(l => l.title === activeTab)?.id;
     const { data: debtsData } = await supabase
       .from("debts")
       .select("*")
-      .eq("ledger_id", currentLedgerId)  // ← Только текущий ledger!
+      .eq("ledger_id", currentLedgerId)  // Только долги текущего человека
       .order("due_date", { ascending: true });
 
     setTransactions(tx || []);
@@ -232,6 +233,13 @@ export default function Home() {
     setCategories(cats || []);
     setDebts(debtsData || []);
   }
+
+  // Перезагружаем данные при смене вкладки
+  useEffect(() => {
+    if (ledgers.length > 0) {
+      refreshData(ledgers.map(l => l.id));
+    }
+  }, [activeTab, ledgers]);
 
   const currentLedger = ledgers.find((l: any) => l.title === activeTab);
 
@@ -244,7 +252,7 @@ export default function Home() {
     endOfMonth.setHours(23, 59, 59, 999);
 
     const cumulativeTx = transactions.filter((t: any) => {
-      if (!t.transaction_date || t.ledger_id !== currentLedger.id) return false;
+      if (!t.transaction_date) return false;
       return new Date(t.transaction_date) <= endOfMonth;
     });
 
@@ -610,7 +618,7 @@ export default function Home() {
             <section className="mt-12">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold flex items-center gap-3 text-yellow-300">
-                  <Landmark size={24} /> {myDebts}
+                  <Landmark size={24} /> {myDebtsTitle}
                 </h2>
                 <Button
                   variant="outline"
@@ -667,7 +675,7 @@ export default function Home() {
                 ))
               ) : (
                 <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-xl">
-                  {iHaveNoDebts}
+                  {noDebtsText}
                 </div>
               )}
             </section>
