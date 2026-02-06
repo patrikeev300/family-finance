@@ -11,7 +11,6 @@ import {
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
-  DrawerTrigger,
   DrawerFooter,
   DrawerClose,
 } from "@/components/ui/drawer";
@@ -108,17 +107,13 @@ export default function Home() {
   async function initApp() {
     try {
       setLoading(true);
-
       const tg = window.Telegram?.WebApp;
       if (tg) {
         tg.ready();
         tg.expand();
       }
 
-      const tgUser = tg?.initDataUnsafe?.user || {
-        id: 464444608,
-        first_name: "Глеб (демо)",
-      };
+      const tgUser = tg?.initDataUnsafe?.user || { id: 464444608, first_name: "Глеб (демо)" };
 
       let { data: currProfile } = await supabase
         .from("profiles")
@@ -144,17 +139,12 @@ export default function Home() {
             })
             .select()
             .single();
-
           currProfile = newProfile;
         }
       }
 
       setProfile(currProfile);
-
-      if (!currProfile?.family_id) {
-        console.error("Нет family_id");
-        return;
-      }
+      if (!currProfile?.family_id) return;
 
       let { data: currLedgers } = await supabase
         .from("ledgers")
@@ -162,17 +152,12 @@ export default function Home() {
         .eq("family_id", currProfile.family_id);
 
       if (!currLedgers?.length) {
-        const inserts = LEDGER_TITLES.map((title) => ({
+        const inserts = LEDGER_TITLES.map(title => ({
           family_id: currProfile.family_id,
           title,
           type: title === "Кредиты" ? "credit" : "standard",
         }));
-
-        const { data: created } = await supabase
-          .from("ledgers")
-          .insert(inserts)
-          .select();
-
+        const { data: created } = await supabase.from("ledgers").insert(inserts).select();
         currLedgers = created || [];
       }
 
@@ -215,9 +200,7 @@ export default function Home() {
     if (!currentLedger) return null;
 
     const filtered = transactions.filter(
-      (t: any) =>
-        t.ledger_id === currentLedger.id &&
-        t.transaction_date?.startsWith(selectedMonth)
+      (t: any) => t.ledger_id === currentLedger.id && t.transaction_date?.startsWith(selectedMonth)
     );
 
     const incomeTx = filtered.filter((t: any) => t.transaction_type === "income");
@@ -470,7 +453,10 @@ export default function Home() {
               pageData.incomeGroups.map((g, i) => (
                 <div
                   key={i}
-                  onClick={() => setSelectedCat({ name: g.name, id: categories.find(c => c.name === g.name)?.id || null, type: "income" })}
+                  onClick={() => {
+                    setSelectedCat({ name: g.name, id: categories.find(c => c.name === g.name)?.id || null, type: "income" });
+                    setCatTxOpen(true);
+                  }}
                   className="bg-zinc-900 p-5 rounded-xl mb-4 border border-zinc-800 hover:border-emerald-700 cursor-pointer"
                 >
                   <div className="flex justify-between items-center">
@@ -499,7 +485,10 @@ export default function Home() {
               pageData.expenseGroups.map((g, i) => (
                 <div
                   key={i}
-                  onClick={() => setSelectedCat({ name: g.name, id: categories.find(c => c.name === g.name)?.id || null, type: "expense" })}
+                  onClick={() => {
+                    setSelectedCat({ name: g.name, id: categories.find(c => c.name === g.name)?.id || null, type: "expense" });
+                    setCatTxOpen(true);
+                  }}
                   className="bg-zinc-900 p-5 rounded-xl mb-4 border border-zinc-800 hover:border-red-700 cursor-pointer"
                 >
                   <div className="flex justify-between items-center">
@@ -518,7 +507,7 @@ export default function Home() {
             )}
           </section>
 
-          {/* Кнопки — теперь просто внизу страницы, не фиксированы */}
+          {/* Кнопки внизу страницы */}
           <div className="flex justify-center gap-4 pb-8">
             <Button
               variant="outline"
@@ -725,7 +714,7 @@ export default function Home() {
         </Tabs>
       </div>
 
-      {/* Кнопка добавления транзакции */}
+      {/* Кнопка добавления транзакции — только не на кредитах */}
       {!isCredit && (
         <Button
           className="fixed bottom-28 right-6 w-16 h-16 rounded-full bg-indigo-600 text-white shadow-xl hover:bg-indigo-700 transition-colors z-50 flex items-center justify-center"
@@ -840,14 +829,14 @@ export default function Home() {
 
       {/* Drawer управления категориями */}
       <Drawer open={catManagerOpen} onOpenChange={setCatManagerOpen}>
-        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white max-h-[90vh]">
+        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
             <DrawerTitle className="text-3xl font-bold text-center">
               Все категории
             </DrawerTitle>
           </DrawerHeader>
 
-          <div className="p-6 space-y-5">
+          <div className="p-6 pb-24 overflow-y-auto">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {categories
                 .filter((c) => c.ledger_id === currentLedger.id)
@@ -886,7 +875,7 @@ export default function Home() {
             </div>
 
             <Button
-              className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl"
+              className="w-full h-12 mt-6 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl"
               onClick={() => {
                 setEditingCat(null);
                 setCatName("");
@@ -910,18 +899,15 @@ export default function Home() {
       </Drawer>
 
       {/* Drawer добавления/редактирования категории */}
-      <Drawer open={catDrawerOpen} onOpenChange={(open) => {
-        setCatDrawerOpen(open);
-        if (!open) setEditingCat(null);
-      }}>
-        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white max-h-[70vh]">
+      <Drawer open={catDrawerOpen} onOpenChange={setCatDrawerOpen}>
+        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
             <DrawerTitle className="text-3xl font-bold text-center">
               {editingCat ? "Редактировать категорию" : "Новая категория"}
             </DrawerTitle>
           </DrawerHeader>
 
-          <div className="p-6 space-y-5">
+          <div className="p-6 pb-24 space-y-5">
             <div>
               <label className="block text-sm mb-1.5 text-zinc-400">Название</label>
               <Input
@@ -1000,18 +986,15 @@ export default function Home() {
       </Drawer>
 
       {/* Drawer для кредитов/карт */}
-      <Drawer open={creditDrawerOpen} onOpenChange={(open) => {
-        setCreditDrawerOpen(open);
-        if (!open) setEditingCredit(null);
-      }}>
-        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white max-h-[90vh]">
+      <Drawer open={creditDrawerOpen} onOpenChange={setCreditDrawerOpen}>
+        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
             <DrawerTitle className="text-3xl font-bold text-center">
               {editingCredit ? "Редактировать" : "Добавить"} {creditType === "loan" ? "кредит" : "карту"}
             </DrawerTitle>
           </DrawerHeader>
 
-          <div className="p-6 space-y-5">
+          <div className="p-6 pb-24 space-y-5">
             <div>
               <label className="block text-sm mb-1.5 text-zinc-400">Название</label>
               <Input
@@ -1098,14 +1081,14 @@ export default function Home() {
 
       {/* Список всех транзакций */}
       <Drawer open={allTxOpen} onOpenChange={setAllTxOpen}>
-        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white max-h-[90vh]">
+        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
             <DrawerTitle className="text-3xl font-bold text-center">
               Все транзакции {activeTab}
             </DrawerTitle>
           </DrawerHeader>
 
-          <div className="p-6 space-y-4 overflow-y-auto">
+          <div className="p-6 pb-24 overflow-y-auto">
             {allTransactions.length ? (
               allTransactions.map((t) => (
                 <div
@@ -1174,14 +1157,14 @@ export default function Home() {
 
       {/* Список транзакций по категории */}
       <Drawer open={catTxOpen} onOpenChange={setCatTxOpen}>
-        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white max-h-[90vh]">
+        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
             <DrawerTitle className="text-3xl font-bold text-center">
               {selectedCat?.name}
             </DrawerTitle>
           </DrawerHeader>
 
-          <div className="p-6 space-y-4 overflow-y-auto">
+          <div className="p-6 pb-24 overflow-y-auto">
             {transactionsByCategory.length ? (
               transactionsByCategory.map((t) => (
                 <div
