@@ -70,19 +70,20 @@ export default function Home() {
   const [type, setType] = useState<"income" | "expense">("expense");
   const [comment, setComment] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
   const [editingTx, setEditingTx] = useState<any | null>(null);
   const [catTxOpen, setCatTxOpen] = useState(false);
 
   // Категории
   const [catManagerOpen, setCatManagerOpen] = useState(false);
+  const [catDrawerOpen, setCatDrawerOpen] = useState(false);
   const [catName, setCatName] = useState("");
   const [catIcon, setCatIcon] = useState("");
   const [catType, setCatType] = useState<"income" | "expense">("expense");
   const [editingCat, setEditingCat] = useState<Category | null>(null);
-  const [creditDrawerOpen, setCreditDrawerOpen] = useState(false);
-  const [catDrawerOpen, setCatDrawerOpen] = useState(false);
 
   // Кредиты/карты
+  const [creditDrawerOpen, setCreditDrawerOpen] = useState(false);
   const [creditName, setCreditName] = useState("");
   const [creditDebt, setCreditDebt] = useState("");
   const [creditLimit, setCreditLimit] = useState("");
@@ -254,7 +255,7 @@ export default function Home() {
   }, []);
 
   const handleTxSubmit = useCallback(async () => {
-    if (!amount || !currentLedger || !supabase) return;
+    if (!amount || !currentLedger || !supabase || !transactionDate) return;
     const num = parseFloat(amount);
     if (isNaN(num)) return;
 
@@ -265,7 +266,7 @@ export default function Home() {
       transaction_type: type,
       category_id: selectedCategoryId || null,
       comment: comment.trim() || null,
-      transaction_date: new Date().toISOString(),
+      transaction_date: new Date(transactionDate).toISOString(),
     };
 
     let error;
@@ -283,11 +284,12 @@ export default function Home() {
     setAmount("");
     setComment("");
     setSelectedCategoryId(null);
+    setTransactionDate(new Date().toISOString().slice(0, 10));
     setEditingTx(null);
     setTxDialogOpen(false);
     window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success");
     refreshData(ledgers.map((l: any) => l.id));
-  }, [amount, currentLedger, supabase, type, selectedCategoryId, comment, editingTx, profile, ledgers]);
+  }, [amount, currentLedger, supabase, type, selectedCategoryId, comment, transactionDate, editingTx, profile, ledgers]);
 
   const handleCategorySubmit = useCallback(async () => {
     if (!catName || !currentLedger || !supabase) return;
@@ -723,6 +725,7 @@ export default function Home() {
             setAmount("");
             setComment("");
             setSelectedCategoryId(null);
+            setTransactionDate(new Date().toISOString().slice(0, 10));
             setType("expense");
             setTxDialogOpen(true);
           }}
@@ -732,8 +735,14 @@ export default function Home() {
       )}
 
       {/* Dialog для транзакций */}
-      <Dialog open={txDialogOpen} onOpenChange={setTxDialogOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm p-6">
+      <Dialog open={txDialogOpen} onOpenChange={(open) => {
+        setTxDialogOpen(open);
+        if (!open) {
+          setEditingTx(null);
+          setTransactionDate(new Date().toISOString().slice(0, 10));
+        }
+      }}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm p-6 max-h-[90vh] overflow-y-auto">
           <DialogHeader className="mb-5">
             <DialogTitle className="text-2xl font-bold text-center">
               {editingTx ? "Редактировать" : "Новая"} запись
@@ -756,6 +765,17 @@ export default function Home() {
               >
                 Доход
               </Button>
+            </div>
+
+            {/* Поле даты транзакции */}
+            <div>
+              <label className="block text-sm mb-1.5 text-zinc-400">Дата</label>
+              <Input
+                type="date"
+                value={transactionDate}
+                onChange={(e) => setTransactionDate(e.target.value)}
+                className="h-12 bg-zinc-800 border-zinc-700 text-base px-4"
+              />
             </div>
 
             <div>
@@ -804,7 +824,7 @@ export default function Home() {
             <div className="flex gap-3 pt-3">
               <Button
                 onClick={handleTxSubmit}
-                disabled={!amount.trim()}
+                disabled={!amount.trim() || !transactionDate}
                 className="flex-1 h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-medium disabled:opacity-50"
               >
                 {editingTx ? "Сохранить" : "Добавить"}
@@ -1111,6 +1131,7 @@ export default function Home() {
                             setType(t.transaction_type);
                             setComment(t.comment || "");
                             setSelectedCategoryId(t.category_id || null);
+                            setTransactionDate(t.transaction_date ? t.transaction_date.slice(0, 10) : new Date().toISOString().slice(0, 10));
                             setTxDialogOpen(true);
                           }}
                         >
@@ -1187,6 +1208,7 @@ export default function Home() {
                             setType(t.transaction_type);
                             setComment(t.comment || "");
                             setSelectedCategoryId(t.category_id || null);
+                            setTransactionDate(t.transaction_date ? t.transaction_date.slice(0, 10) : new Date().toISOString().slice(0, 10));
                             setTxDialogOpen(true);
                           }}
                         >
