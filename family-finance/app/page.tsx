@@ -213,12 +213,11 @@ export default function Home() {
       .select("*")
       .in("ledger_id", ledgerIds);
 
-    // Показываем долги, где to_person НЕ равен текущему таб → то есть я должен кому-то
+    // Долги берём ТОЛЬКО по текущему ledger — это и есть персонализация
     const { data: debtsData } = await supabase
       .from("debts")
       .select("*")
       .in("ledger_id", ledgerIds)
-      .neq("to_person", activeTab)  // ← КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: не равно текущему таб
       .order("due_date", { ascending: true });
 
     setTransactions(tx || []);
@@ -604,7 +603,7 @@ export default function Home() {
             <section className="mt-12">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold flex items-center gap-3 text-yellow-300">
-                  <Landmark size={24} /> Долги
+                  <Landmark size={24} /> Мои долги
                 </h2>
                 <Button
                   variant="outline"
@@ -618,7 +617,7 @@ export default function Home() {
                     setDebtDrawerOpen(true);
                   }}
                 >
-                  + Новый долг
+                  + Я должен
                 </Button>
               </div>
 
@@ -627,7 +626,7 @@ export default function Home() {
                   <Card key={debt.id} className="bg-zinc-900 border-zinc-800 rounded-xl p-5 mb-4">
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="text-lg font-bold">Долг {debt.to_person}</p>
+                        <p className="text-lg font-bold">Должен {debt.to_person}</p>
                         <p className="text-2xl font-bold text-yellow-300 mt-1">
                           {debt.amount.toLocaleString("ru-RU")} ₽
                         </p>
