@@ -75,14 +75,14 @@ export default function Home() {
 
   // Категории
   const [catManagerOpen, setCatManagerOpen] = useState(false);
-  const [catDrawerOpen, setCatDrawerOpen] = useState(false);
   const [catName, setCatName] = useState("");
   const [catIcon, setCatIcon] = useState("");
   const [catType, setCatType] = useState<"income" | "expense">("expense");
   const [editingCat, setEditingCat] = useState<Category | null>(null);
+  const [creditDrawerOpen, setCreditDrawerOpen] = useState(false);
+  const [catDrawerOpen, setCatDrawerOpen] = useState(false);
 
   // Кредиты/карты
-  const [creditDrawerOpen, setCreditDrawerOpen] = useState(false);
   const [creditName, setCreditName] = useState("");
   const [creditDebt, setCreditDebt] = useState("");
   const [creditLimit, setCreditLimit] = useState("");
@@ -827,7 +827,7 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
-      {/* Drawer управления категориями */}
+      {/* Drawer управления категориями (список) */}
       <Drawer open={catManagerOpen} onOpenChange={setCatManagerOpen}>
         <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
@@ -876,13 +876,7 @@ export default function Home() {
 
             <Button
               className="w-full h-12 mt-6 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl"
-              onClick={() => {
-                setEditingCat(null);
-                setCatName("");
-                setCatIcon("");
-                setCatType("expense");
-                setCatDrawerOpen(true);
-              }}
+              onClick={() => setCatDrawerOpen(true)}
             >
               + Добавить категорию
             </Button>
@@ -898,16 +892,16 @@ export default function Home() {
         </DrawerContent>
       </Drawer>
 
-      {/* Drawer добавления/редактирования категории */}
-      <Drawer open={catDrawerOpen} onOpenChange={setCatDrawerOpen}>
-        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
-          <DrawerHeader className="border-b border-zinc-700/50 pb-5">
-            <DrawerTitle className="text-3xl font-bold text-center">
+      {/* Dialog для добавления/редактирования категории */}
+      <Dialog open={catDrawerOpen} onOpenChange={setCatDrawerOpen}>
+        <DialogContent className="bg-zinc-950 border-zinc-700 text-white max-w-md p-6 max-h-[85vh] overflow-y-auto">
+          <DialogHeader className="mb-5">
+            <DialogTitle className="text-3xl font-bold text-center">
               {editingCat ? "Редактировать категорию" : "Новая категория"}
-            </DrawerTitle>
-          </DrawerHeader>
+            </DialogTitle>
+          </DialogHeader>
 
-          <div className="p-6 pb-24 space-y-5">
+          <div className="space-y-5">
             <div>
               <label className="block text-sm mb-1.5 text-zinc-400">Название</label>
               <Input
@@ -982,19 +976,19 @@ export default function Home() {
               </Button>
             )}
           </div>
-        </DrawerContent>
-      </Drawer>
+        </DialogContent>
+      </Dialog>
 
-      {/* Drawer для кредитов/карт */}
-      <Drawer open={creditDrawerOpen} onOpenChange={setCreditDrawerOpen}>
-        <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
-          <DrawerHeader className="border-b border-zinc-700/50 pb-5">
-            <DrawerTitle className="text-3xl font-bold text-center">
+      {/* Dialog для кредитов/карт */}
+      <Dialog open={creditDrawerOpen} onOpenChange={setCreditDrawerOpen}>
+        <DialogContent className="bg-zinc-950 border-zinc-700 text-white max-w-md p-6 max-h-[85vh] overflow-y-auto">
+          <DialogHeader className="mb-5">
+            <DialogTitle className="text-3xl font-bold text-center">
               {editingCredit ? "Редактировать" : "Добавить"} {creditType === "loan" ? "кредит" : "карту"}
-            </DrawerTitle>
-          </DrawerHeader>
+            </DialogTitle>
+          </DialogHeader>
 
-          <div className="p-6 pb-24 space-y-5">
+          <div className="space-y-5">
             <div>
               <label className="block text-sm mb-1.5 text-zinc-400">Название</label>
               <Input
@@ -1076,10 +1070,10 @@ export default function Home() {
               )}
             </div>
           </div>
-        </DrawerContent>
-      </Drawer>
+        </DialogContent>
+      </Dialog>
 
-      {/* Список всех транзакций */}
+      {/* Drawer для списка всех транзакций */}
       <Drawer open={allTxOpen} onOpenChange={setAllTxOpen}>
         <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
@@ -1155,7 +1149,7 @@ export default function Home() {
         </DrawerContent>
       </Drawer>
 
-      {/* Список транзакций по категории */}
+      {/* Drawer для транзакций по категории */}
       <Drawer open={catTxOpen} onOpenChange={setCatTxOpen}>
         <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
