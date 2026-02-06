@@ -31,10 +31,10 @@ import {
   Pencil,
   CreditCard,
   Landmark,
-  List,
 } from "lucide-react";
 
 const LEDGER_TITLES = ["Настя", "Глеб", "Еда", "ВБ", "Кредиты"];
+const DEBT_PERSONS = ["Глеб", "Настя", "ВБ"];
 
 type Category = {
   id: string;
@@ -42,6 +42,16 @@ type Category = {
   icon: string | null;
   type: string;
   ledger_id: string;
+};
+
+type Debt = {
+  id: string;
+  ledger_id: string;
+  to_person: string;
+  amount: number;
+  due_date: string | null;
+  comment: string | null;
+  created_at: string;
 };
 
 declare global {
@@ -54,12 +64,15 @@ declare global {
 }
 
 export default function Home() {
+  const supabase = createClient();
+
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any>(null);
   const [ledgers, setLedgers] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [credits, setCredits] = useState<any[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
 
   const [activeTab, setActiveTab] = useState("Настя");
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -92,22 +105,32 @@ export default function Home() {
   const [creditType, setCreditType] = useState<"loan" | "credit_card">("loan");
   const [editingCredit, setEditingCredit] = useState<any | null>(null);
 
+  // Долги
+  const [debtDrawerOpen, setDebtDrawerOpen] = useState(false);
+  const [debtToPerson, setDebtToPerson] = useState("");
+  const [debtAmount, setDebtAmount] = useState("");
+  const [debtDueDate, setDebtDueDate] = useState("");
+  const [debtComment, setDebtComment] = useState("");
+  const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
+
   // Модалки
   const [selectedCat, setSelectedCat] = useState<{ name: string; id: string | null; type: string } | null>(null);
   const [allTxOpen, setAllTxOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [deleteTable, setDeleteTable] = useState<"transactions" | "credit_items" | "categories" | null>(null);
+  const [deleteTable, setDeleteTable] = useState<"transactions" | "credit_items" | "categories" | "debts" | null>(null);
 
-  const supabase = createClient();
+  const isCredit = activeTab === "Кредиты";
+  const isPersonalLedger = ["Настя", "Глеб"].includes(activeTab);
+  const availableDebtPersons = DEBT_PERSONS.filter(person => person !== activeTab);
 
   useEffect(() => {
     if (typeof window !== "undefined") initApp();
   }, []);
 
   async function initApp() {
+    setLoading(true);
     try {
-      setLoading(true);
       const tg = window.Telegram?.WebApp;
       if (tg) {
         tg.ready();
@@ -190,9 +213,16 @@ export default function Home() {
       .select("*")
       .in("ledger_id", ledgerIds);
 
+    const { data: debtsData } = await supabase
+      .from("debts")
+      .select("*")
+      .in("ledger_id", ledgerIds)
+      .order("due_date", { ascending: true });
+
     setTransactions(tx || []);
     setCredits(cr || []);
     setCategories(cats || []);
+    setDebts(debtsData || []);
   }
 
   const currentLedger = ledgers.find((l: any) => l.title === activeTab);
@@ -200,13 +230,11 @@ export default function Home() {
   const pageData = useMemo(() => {
     if (!currentLedger) return null;
 
-    // Конец выбранного месяца (23:59:59 последнего дня)
     const endOfMonth = new Date(selectedMonth + "-01");
     endOfMonth.setMonth(endOfMonth.getMonth() + 1);
     endOfMonth.setDate(0);
     endOfMonth.setHours(23, 59, 59, 999);
 
-    // Все транзакции до конца выбранного месяца (для баланса)
     const cumulativeTx = transactions.filter((t: any) => {
       if (!t.transaction_date || t.ledger_id !== currentLedger.id) return false;
       return new Date(t.transaction_date) <= endOfMonth;
@@ -222,7 +250,6 @@ export default function Home() {
 
     const cumulativeBalance = cumulativeIncome - cumulativeExpense;
 
-    // Только транзакции выбранного месяца (для категорий и отчёта за месяц)
     const monthTx = cumulativeTx.filter(t => t.transaction_date?.startsWith(selectedMonth));
 
     const incomeTx = monthTx.filter(t => t.transaction_type === "income");
@@ -254,11 +281,11 @@ export default function Home() {
 
     return {
       ledger: currentLedger,
-      incomeGroups: group(incomeTx),      // только за месяц
-      expenseGroups: group(expenseTx),    // только за месяц
-      balance: cumulativeBalance,         // накопительный на конец месяца
-      income: monthIncome,                // за месяц
-      expense: monthExpense,              // за месяц
+      incomeGroups: group(incomeTx),
+      expenseGroups: group(expenseTx),
+      balance: cumulativeBalance,
+      income: monthIncome,
+      expense: monthExpense,
       credits: credits.filter((c: any) => c.ledger_id === currentLedger.id),
     };
   }, [activeTab, transactions, credits, categories, selectedMonth, ledgers]);
@@ -266,17 +293,30 @@ export default function Home() {
   const formatDate = useCallback((dateString: string) => {
     if (!dateString) return "—";
     const date = new Date(dateString);
-    return date.toLocaleString("ru-RU", {
+    return date.toLocaleDateString("ru-RU", {
       day: "2-digit",
       month: "short",
       year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
     });
   }, []);
 
-  const handleTxSubmit = useCallback(async () => {
-    if (!amount || !currentLedger || !supabase || !transactionDate) return;
+  const handleSubmit = async (table: string, payload: any, id?: string) => {
+    const { error } = id
+      ? await supabase.from(table).update(payload).eq("id", id)
+      : await supabase.from(table).insert(payload);
+
+    if (error) {
+      console.error("Ошибка:", error);
+      return false;
+    }
+
+    await refreshData(ledgers.map((l: any) => l.id));
+    window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success");
+    return true;
+  };
+
+  const handleTxSubmit = async () => {
+    if (!amount || !currentLedger || !transactionDate) return;
     const num = parseFloat(amount);
     if (isNaN(num)) return;
 
@@ -290,30 +330,43 @@ export default function Home() {
       transaction_date: new Date(transactionDate).toISOString(),
     };
 
-    let error;
-    if (editingTx) {
-      ({ error } = await supabase.from("transactions").update(payload).eq("id", editingTx.id));
-    } else {
-      ({ error } = await supabase.from("transactions").insert(payload));
+    const success = await handleSubmit("transactions", payload, editingTx?.id);
+    if (success) {
+      setTxDialogOpen(false);
+      setEditingTx(null);
+      setAmount("");
+      setComment("");
+      setSelectedCategoryId(null);
+      setTransactionDate(new Date().toISOString().slice(0, 10));
     }
+  };
 
-    if (error) {
-      console.error("Ошибка:", error);
-      return;
+  const handleDebtSubmit = async () => {
+    if (!debtToPerson || !debtAmount || !currentLedger) return;
+    const num = parseFloat(debtAmount);
+    if (isNaN(num)) return;
+
+    const payload = {
+      ledger_id: currentLedger.id,
+      to_person: debtToPerson,
+      amount: num,
+      due_date: debtDueDate || null,
+      comment: debtComment.trim() || null,
+    };
+
+    const success = await handleSubmit("debts", payload, editingDebt?.id);
+    if (success) {
+      setDebtDrawerOpen(false);
+      setEditingDebt(null);
+      setDebtToPerson("");
+      setDebtAmount("");
+      setDebtDueDate("");
+      setDebtComment("");
     }
+  };
 
-    setAmount("");
-    setComment("");
-    setSelectedCategoryId(null);
-    setTransactionDate(new Date().toISOString().slice(0, 10));
-    setEditingTx(null);
-    setTxDialogOpen(false);
-    window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success");
-    refreshData(ledgers.map((l: any) => l.id));
-  }, [amount, currentLedger, supabase, type, selectedCategoryId, comment, transactionDate, editingTx, profile, ledgers]);
-
-  const handleCategorySubmit = useCallback(async () => {
-    if (!catName || !currentLedger || !supabase) return;
+  const handleCategorySubmit = async () => {
+    if (!catName || !currentLedger) return;
 
     const payload = {
       ledger_id: currentLedger.id,
@@ -322,29 +375,18 @@ export default function Home() {
       type: catType,
     };
 
-    let error;
-    if (editingCat) {
-      ({ error } = await supabase.from("categories").update(payload).eq("id", editingCat.id));
-    } else {
-      ({ error } = await supabase.from("categories").insert(payload));
+    const success = await handleSubmit("categories", payload, editingCat?.id);
+    if (success) {
+      setCatDrawerOpen(false);
+      setEditingCat(null);
+      setCatName("");
+      setCatIcon("");
+      setCatType("expense");
     }
+  };
 
-    if (error) {
-      console.error("Ошибка:", error);
-      return;
-    }
-
-    setCatName("");
-    setCatIcon("");
-    setCatType("expense");
-    setEditingCat(null);
-    setCatDrawerOpen(false);
-    window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success");
-    refreshData(ledgers.map((l: any) => l.id));
-  }, [catName, catIcon, catType, editingCat, currentLedger, supabase, ledgers]);
-
-  const handleCreditSubmit = useCallback(async () => {
-    if (!creditName || !currentLedger || !supabase) return;
+  const handleCreditSubmit = async () => {
+    if (!creditName || !currentLedger) return;
 
     const payload = {
       ledger_id: currentLedger.id,
@@ -356,49 +398,49 @@ export default function Home() {
       item_type: creditType,
     };
 
-    let error;
-    if (editingCredit) {
-      ({ error } = await supabase.from("credit_items").update(payload).eq("id", editingCredit.id));
-    } else {
-      ({ error } = await supabase.from("credit_items").insert(payload));
+    const success = await handleSubmit("credit_items", payload, editingCredit?.id);
+    if (success) {
+      setCreditDrawerOpen(false);
+      setEditingCredit(null);
+      setCreditName("");
+      setCreditDebt("");
+      setCreditLimit("");
+      setCreditTransferLimit("");
+      setCreditDueDate("");
+      setCreditType("loan");
     }
+  };
 
-    if (error) {
-      console.error("Ошибка:", error);
-      return;
-    }
-
-    setCreditName("");
-    setCreditDebt("");
-    setCreditLimit("");
-    setCreditTransferLimit("");
-    setCreditDueDate("");
-    setCreditType("loan");
-    setEditingCredit(null);
-    setCreditDrawerOpen(false);
-    window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success");
-    refreshData(ledgers.map((l: any) => l.id));
-  }, [creditName, creditDebt, creditLimit, creditTransferLimit, creditDueDate, creditType, editingCredit, currentLedger, supabase, ledgers]);
-
-  const handleDelete = useCallback(async (id: string, table: "transactions" | "credit_items" | "categories") => {
+  const handleDelete = async () => {
+    if (!deleteId || !deleteTable) return;
     if (!confirm("Удалить?")) return;
-    const { error } = await supabase.from(table).delete().eq("id", id);
+
+    const { error } = await supabase.from(deleteTable).delete().eq("id", deleteId);
     if (!error) {
-      refreshData(ledgers.map((l: any) => l.id));
+      await refreshData(ledgers.map((l: any) => l.id));
       window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success");
     }
     setDeleteDialogOpen(false);
     setDeleteId(null);
     setDeleteTable(null);
-  }, [supabase, ledgers]);
+  };
 
-  const openEditCategory = useCallback((cat: Category) => {
+  const openEditDebt = (debt: Debt) => {
+    setEditingDebt(debt);
+    setDebtToPerson(debt.to_person);
+    setDebtAmount(debt.amount.toString());
+    setDebtDueDate(debt.due_date || "");
+    setDebtComment(debt.comment || "");
+    setDebtDrawerOpen(true);
+  };
+
+  const openEditCategory = (cat: Category) => {
     setEditingCat(cat);
     setCatName(cat.name);
     setCatIcon(cat.icon || "");
     setCatType(cat.type as "income" | "expense");
     setCatDrawerOpen(true);
-  }, []);
+  };
 
   const transactionsByCategory = useMemo(() => {
     if (!selectedCat || !currentLedger) return [];
@@ -429,11 +471,9 @@ export default function Home() {
 
   if (!currentLedger) return <div className="p-10 text-center text-2xl text-white">Раздел не найден</div>;
 
-  const isCredit = activeTab === "Кредиты";
-
   return (
     <main className="min-h-screen bg-black text-white pb-44 px-4">
-      {/* Header */}
+      {/* Заголовок */}
       <div className="flex justify-between items-center py-6">
         <h1 className="text-3xl font-bold">PNL Finance</h1>
         <div className="flex items-center gap-3 bg-zinc-900 px-4 py-2 rounded-lg border border-zinc-800">
@@ -447,7 +487,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Баланс — накопительный */}
+      {/* Баланс (накопительный) */}
       {!isCredit && pageData && (
         <Card className="mb-8 bg-zinc-900 border-zinc-800 rounded-xl p-6">
           <p className="text-sm text-zinc-400 mb-2">Баланс на конец {selectedMonth}</p>
@@ -472,7 +512,7 @@ export default function Home() {
         </Card>
       )}
 
-      {/* Контент */}
+      {/* Основной контент */}
       {!isCredit ? (
         <div className="space-y-10 pb-32">
           {/* Доходы */}
@@ -539,7 +579,7 @@ export default function Home() {
             )}
           </section>
 
-          {/* Кнопки внизу страницы */}
+          {/* Кнопки Категории / Все транзакции */}
           <div className="flex justify-center gap-4 pb-8">
             <Button
               variant="outline"
@@ -556,6 +596,74 @@ export default function Home() {
               Все транзакции
             </Button>
           </div>
+
+          {/* Блок Долги — только Настя и Глеб */}
+          {isPersonalLedger && (
+            <section className="mt-12">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold flex items-center gap-3 text-yellow-300">
+                  <Landmark size={24} /> Долги
+                </h2>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEditingDebt(null);
+                    setDebtToPerson("");
+                    setDebtAmount("");
+                    setDebtDueDate("");
+                    setDebtComment("");
+                    setDebtDrawerOpen(true);
+                  }}
+                >
+                  + Долг
+                </Button>
+              </div>
+
+              {debts.length ? (
+                debts.map((debt) => (
+                  <Card key={debt.id} className="bg-zinc-900 border-zinc-800 rounded-xl p-5 mb-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-lg font-bold">{debt.to_person}</p>
+                        <p className="text-2xl font-bold text-yellow-300 mt-1">
+                          {debt.amount.toLocaleString("ru-RU")} ₽
+                        </p>
+                        {debt.due_date && (
+                          <p className="text-sm text-zinc-400 mt-2 flex items-center gap-2">
+                            <Calendar size={14} /> Вернуть до: {formatDate(debt.due_date)}
+                          </p>
+                        )}
+                        {debt.comment && (
+                          <p className="text-sm text-zinc-500 mt-2">{debt.comment}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => openEditDebt(debt)}>
+                          <Pencil size={18} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setDeleteId(debt.id);
+                            setDeleteTable("debts");
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 size={18} />
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))
+              ) : (
+                <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-xl">
+                  Нет долгов
+                </div>
+              )}
+            </section>
+          )}
         </div>
       ) : (
         <div className="space-y-8 pb-32">
@@ -618,7 +726,7 @@ export default function Home() {
                     </p>
                     {c.due_date && (
                       <p className="text-sm text-zinc-400 flex items-center gap-2">
-                        <Calendar size={16} /> Платёж: {c.due_date}
+                        <Calendar size={16} /> Платёж: {formatDate(c.due_date)}
                       </p>
                     )}
                   </Card>
@@ -715,7 +823,7 @@ export default function Home() {
 
                     {c.due_date && (
                       <p className="mt-4 text-sm text-zinc-400 flex items-center gap-2">
-                        <Calendar size={16} /> Платёж: {c.due_date}
+                        <Calendar size={16} /> Платёж: {formatDate(c.due_date)}
                       </p>
                     )}
                   </Card>
@@ -729,7 +837,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Навигация */}
+      {/* Нижняя навигация */}
       <div className="fixed bottom-8 left-4 right-4 z-50">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid grid-cols-5 bg-zinc-900 border border-zinc-800 rounded-2xl p-1.5">
@@ -746,7 +854,7 @@ export default function Home() {
         </Tabs>
       </div>
 
-      {/* Кнопка добавления транзакции — только не на кредитах */}
+      {/* Плавающая кнопка + (только не на Кредитах) */}
       {!isCredit && (
         <Button
           className="fixed bottom-28 right-6 w-16 h-16 rounded-full bg-indigo-600 text-white shadow-xl hover:bg-indigo-700 transition-colors z-50 flex items-center justify-center"
@@ -764,7 +872,7 @@ export default function Home() {
         </Button>
       )}
 
-      {/* Dialog для транзакций */}
+      {/* Диалог транзакции */}
       <Dialog open={txDialogOpen} onOpenChange={(open) => {
         setTxDialogOpen(open);
         if (!open) {
@@ -876,13 +984,11 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
-      {/* Drawer управления категориями */}
+      {/* Drawer списка категорий */}
       <Drawer open={catManagerOpen} onOpenChange={setCatManagerOpen}>
         <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
-            <DrawerTitle className="text-3xl font-bold text-center">
-              Все категории
-            </DrawerTitle>
+            <DrawerTitle className="text-3xl font-bold text-center">Все категории</DrawerTitle>
           </DrawerHeader>
 
           <div className="p-6 pb-24 overflow-y-auto">
@@ -933,15 +1039,13 @@ export default function Home() {
 
           <DrawerFooter className="border-t border-zinc-700/50 pt-5">
             <DrawerClose asChild>
-              <Button variant="outline" className="w-full">
-                Закрыть
-              </Button>
+              <Button variant="outline" className="w-full">Закрыть</Button>
             </DrawerClose>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
 
-      {/* Dialog для добавления/редактирования категории */}
+      {/* Диалог категории */}
       <Dialog open={catDrawerOpen} onOpenChange={setCatDrawerOpen}>
         <DialogContent className="bg-zinc-950 border-zinc-700 text-white max-w-md p-6 max-h-[85vh] overflow-y-auto">
           <DialogHeader className="mb-5">
@@ -1028,7 +1132,7 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog для кредитов/карт */}
+      {/* Диалог кредита/карты */}
       <Dialog open={creditDrawerOpen} onOpenChange={setCreditDrawerOpen}>
         <DialogContent className="bg-zinc-950 border-zinc-700 text-white max-w-md p-6 max-h-[85vh] overflow-y-auto">
           <DialogHeader className="mb-5">
@@ -1122,7 +1226,93 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
-      {/* Drawer для списка всех транзакций */}
+      {/* Диалог долга */}
+      <Dialog open={debtDrawerOpen} onOpenChange={setDebtDrawerOpen}>
+        <DialogContent className="bg-zinc-950 border-zinc-700 text-white max-w-md p-6 max-h-[85vh] overflow-y-auto">
+          <DialogHeader className="mb-5">
+            <DialogTitle className="text-3xl font-bold text-center">
+              {editingDebt ? "Редактировать долг" : "Новый долг"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5">
+            <div>
+              <label className="block text-sm mb-1.5 text-zinc-400">Кому</label>
+              <select
+                value={debtToPerson}
+                onChange={(e) => setDebtToPerson(e.target.value)}
+                className="w-full h-11 bg-zinc-800 border border-zinc-700 rounded-md px-4 text-base"
+              >
+                <option value="">Выберите получателя</option>
+                {availableDebtPersons.map((person) => (
+                  <option key={person} value={person}>
+                    {person}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm mb-1.5 text-zinc-400">Сумма</label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  placeholder="0"
+                  value={debtAmount}
+                  onChange={(e) => setDebtAmount(e.target.value)}
+                  className="h-12 bg-zinc-800 border-zinc-700 text-xl text-center pr-10"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500">₽</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm mb-1.5 text-zinc-400">Вернуть до</label>
+              <Input
+                type="date"
+                value={debtDueDate}
+                onChange={(e) => setDebtDueDate(e.target.value)}
+                className="h-12 bg-zinc-800 border-zinc-700 text-base px-4"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm mb-1.5 text-zinc-400">Комментарий</label>
+              <Input
+                placeholder="Необязательно"
+                value={debtComment}
+                onChange={(e) => setDebtComment(e.target.value)}
+                className="h-11 bg-zinc-800 border-zinc-700 rounded-md px-4"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-3">
+              <Button
+                onClick={handleDebtSubmit}
+                disabled={!debtToPerson || !debtAmount.trim()}
+                className="flex-1 h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-medium disabled:opacity-50"
+              >
+                {editingDebt ? "Сохранить" : "Добавить"}
+              </Button>
+
+              {editingDebt && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEditingDebt(null);
+                    setDebtDrawerOpen(false);
+                  }}
+                  className="flex-1 h-12 border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                >
+                  Отмена
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Drawer всех транзакций */}
       <Drawer open={allTxOpen} onOpenChange={setAllTxOpen}>
         <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
@@ -1134,10 +1324,7 @@ export default function Home() {
           <div className="p-6 pb-24 overflow-y-auto">
             {allTransactions.length ? (
               allTransactions.map((t) => (
-                <div
-                  key={t.id}
-                  className="bg-zinc-900 p-4 rounded-xl border border-zinc-800"
-                >
+                <div key={t.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800">
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="font-medium">{t.comment || "Без комментария"}</p>
@@ -1191,15 +1378,13 @@ export default function Home() {
 
           <DrawerFooter className="border-t border-zinc-700/50 pt-5">
             <DrawerClose asChild>
-              <Button variant="outline" className="w-full">
-                Закрыть
-              </Button>
+              <Button variant="outline" className="w-full">Закрыть</Button>
             </DrawerClose>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
 
-      {/* Drawer для транзакций по категории */}
+      {/* Drawer транзакций по категории */}
       <Drawer open={catTxOpen} onOpenChange={setCatTxOpen}>
         <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
@@ -1211,10 +1396,7 @@ export default function Home() {
           <div className="p-6 pb-24 overflow-y-auto">
             {transactionsByCategory.length ? (
               transactionsByCategory.map((t) => (
-                <div
-                  key={t.id}
-                  className="bg-zinc-900 p-4 rounded-xl border border-zinc-800"
-                >
+                <div key={t.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800">
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="font-medium">{t.comment || "Без комментария"}</p>
@@ -1268,15 +1450,13 @@ export default function Home() {
 
           <DrawerFooter className="border-t border-zinc-700/50 pt-5">
             <DrawerClose asChild>
-              <Button variant="outline" className="w-full">
-                Закрыть
-              </Button>
+              <Button variant="outline" className="w-full">Закрыть</Button>
             </DrawerClose>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
 
-      {/* Диалог удаления */}
+      {/* Диалог подтверждения удаления */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="bg-zinc-950 border-zinc-700 text-white max-w-sm">
           <DialogHeader>
@@ -1289,12 +1469,7 @@ export default function Home() {
             </Button>
             <Button
               variant="destructive"
-              onClick={() => {
-                if (deleteId && deleteTable) handleDelete(deleteId, deleteTable);
-                setDeleteDialogOpen(false);
-                setDeleteId(null);
-                setDeleteTable(null);
-              }}
+              onClick={handleDelete}
               className="flex-1"
             >
               Удалить
