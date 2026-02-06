@@ -199,7 +199,7 @@ export default function Home() {
     }
   }
 
-  async function refreshData(ledgerIds: string[]) {
+    async function refreshData(ledgerIds: string[]) {
     if (!ledgerIds?.length) return;
 
     const { data: tx } = await supabase
@@ -218,10 +218,13 @@ export default function Home() {
       .select("*")
       .in("ledger_id", ledgerIds);
 
+    // КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: долги ТОЛЬКО по текущему ledger (текущей вкладке)
+    // Это делает долги полностью персональными — чужие не видны
+    const currentLedgerId = ledgers.find(l => l.title === activeTab)?.id;
     const { data: debtsData } = await supabase
       .from("debts")
       .select("*")
-      .in("ledger_id", ledgerIds)
+      .eq("ledger_id", currentLedgerId)  // ← Только текущий ledger!
       .order("due_date", { ascending: true });
 
     setTransactions(tx || []);
