@@ -70,7 +70,7 @@ export default function Home() {
   const [type, setType] = useState<"income" | "expense">("expense");
   const [comment, setComment] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
+  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().slice(0, 10));
   const [editingTx, setEditingTx] = useState<any | null>(null);
   const [catTxOpen, setCatTxOpen] = useState(false);
 
@@ -200,15 +200,36 @@ export default function Home() {
   const pageData = useMemo(() => {
     if (!currentLedger) return null;
 
-    const filtered = transactions.filter(
-      (t: any) => t.ledger_id === currentLedger.id && t.transaction_date?.startsWith(selectedMonth)
-    );
+    // Конец выбранного месяца (23:59:59 последнего дня)
+    const endOfMonth = new Date(selectedMonth + "-01");
+    endOfMonth.setMonth(endOfMonth.getMonth() + 1);
+    endOfMonth.setDate(0);
+    endOfMonth.setHours(23, 59, 59, 999);
 
-    const incomeTx = filtered.filter((t: any) => t.transaction_type === "income");
-    const expenseTx = filtered.filter((t: any) => t.transaction_type === "expense");
+    // Все транзакции до конца выбранного месяца (для баланса)
+    const cumulativeTx = transactions.filter((t: any) => {
+      if (!t.transaction_date || t.ledger_id !== currentLedger.id) return false;
+      return new Date(t.transaction_date) <= endOfMonth;
+    });
 
-    const income = incomeTx.reduce((acc: number, t: any) => acc + (Number(t.amount) || 0), 0);
-    const expense = expenseTx.reduce((acc: number, t: any) => acc + (Number(t.amount) || 0), 0);
+    const cumulativeIncome = cumulativeTx
+      .filter(t => t.transaction_type === "income")
+      .reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0);
+
+    const cumulativeExpense = cumulativeTx
+      .filter(t => t.transaction_type === "expense")
+      .reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0);
+
+    const cumulativeBalance = cumulativeIncome - cumulativeExpense;
+
+    // Только транзакции выбранного месяца (для категорий и отчёта за месяц)
+    const monthTx = cumulativeTx.filter(t => t.transaction_date?.startsWith(selectedMonth));
+
+    const incomeTx = monthTx.filter(t => t.transaction_type === "income");
+    const expenseTx = monthTx.filter(t => t.transaction_type === "expense");
+
+    const monthIncome = incomeTx.reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0);
+    const monthExpense = expenseTx.reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0);
 
     const group = (items: any[]) => {
       const map: Record<string, { name: string; total: number; type: string; icon: string | null }> = {};
@@ -233,11 +254,11 @@ export default function Home() {
 
     return {
       ledger: currentLedger,
-      incomeGroups: group(incomeTx),
-      expenseGroups: group(expenseTx),
-      balance: income - expense,
-      income,
-      expense,
+      incomeGroups: group(incomeTx),      // только за месяц
+      expenseGroups: group(expenseTx),    // только за месяц
+      balance: cumulativeBalance,         // накопительный на конец месяца
+      income: monthIncome,                // за месяц
+      expense: monthExpense,              // за месяц
       credits: credits.filter((c: any) => c.ledger_id === currentLedger.id),
     };
   }, [activeTab, transactions, credits, categories, selectedMonth, ledgers]);
@@ -426,17 +447,26 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Баланс */}
+      {/* Баланс — накопительный */}
       {!isCredit && pageData && (
         <Card className="mb-8 bg-zinc-900 border-zinc-800 rounded-xl p-6">
-          <p className="text-sm text-zinc-400 mb-2">{activeTab} • Баланс</p>
-          <div className="text-4xl font-bold mb-6">{pageData.balance.toLocaleString("ru-RU")} ₽</div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-emerald-950/30 p-4 rounded-lg border border-emerald-900/50">
+          <p className="text-sm text-zinc-400 mb-2">Баланс на конец {selectedMonth}</p>
+          <div className="text-5xl font-bold mb-4">{pageData.balance.toLocaleString("ru-RU")} ₽</div>
+
+          <div className="grid grid-cols-3 gap-4 text-sm mt-4">
+            <div>
+              <p className="text-zinc-500">Доходы за месяц</p>
               <p className="text-emerald-400 font-medium">+{pageData.income.toLocaleString("ru-RU")}</p>
             </div>
-            <div className="bg-red-950/30 p-4 rounded-lg border border-red-900/50">
+            <div>
+              <p className="text-zinc-500">Расходы за месяц</p>
               <p className="text-red-400 font-medium">-{pageData.expense.toLocaleString("ru-RU")}</p>
+            </div>
+            <div>
+              <p className="text-zinc-500">Изменение за месяц</p>
+              <p className={`font-medium ${pageData.income - pageData.expense >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {(pageData.income - pageData.expense).toLocaleString("ru-RU")} ₽
+              </p>
             </div>
           </div>
         </Card>
@@ -767,7 +797,6 @@ export default function Home() {
               </Button>
             </div>
 
-            {/* Поле даты транзакции */}
             <div>
               <label className="block text-sm mb-1.5 text-zinc-400">Дата</label>
               <Input
@@ -847,7 +876,7 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
-      {/* Drawer управления категориями (список) */}
+      {/* Drawer управления категориями */}
       <Drawer open={catManagerOpen} onOpenChange={setCatManagerOpen}>
         <DrawerContent className="bg-zinc-950 border-t border-zinc-700/50 text-white">
           <DrawerHeader className="border-b border-zinc-700/50 pb-5">
